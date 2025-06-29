@@ -2,17 +2,19 @@
 
 A modern, cross-platform serial debugging tool built with **Tauri** (Rust backend) and **React** (beautiful frontend GUI). A serial communication application with a modern user interface.
 
-![Serial Debug Assistant](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-orange)
+![](./assets/RSerialDebugAssistant.png)
 
 ## ✨ Features
 
 ### 🎨 **Beautiful Modern GUI**
+
 - Dark theme with professional design
 - Real-time communication logging
 - Responsive layout with resizable panels
 - Intuitive controls and status indicators
 
 ### 🔌 **Professional Serial Communication**
+
 - **Smart Port Detection** - Only shows ports that actually exist
 - **Full Configuration** - Baud rate, data bits, parity, stop bits, flow control(preview)
 - **Dual Data Formats** - Send/receive as Text or Hexadecimal
@@ -20,6 +22,7 @@ A modern, cross-platform serial debugging tool built with **Tauri** (Rust backen
 - **Data Export** - Save logs in TXT
 
 ### ⚡ **Advanced Features**
+
 - **Connection Statistics** - Track bytes sent/received and connection time
 - **Keyboard Shortcuts** - Ctrl+Enter to send, and more
 - **Professional UI** - Like Arduino IDE, PuTTY, but modern and beautiful
@@ -27,11 +30,13 @@ A modern, cross-platform serial debugging tool built with **Tauri** (Rust backen
 ## 🎯 Quick Start
 
 ### Prerequisites
+
 - **Rust** - Install from [rustup.rs](https://rustup.rs/)
 - **Node.js** - Install from [nodejs.org](https://nodejs.org/)
 - **Git** - For cloning the repository
 
 ### 1. Clone and Setup
+
 ```bash
 git clone https://github.com/Gyanano/RSerialDebugAssistant.git
 cd RSerialDebugAssistant
@@ -42,6 +47,7 @@ npm install
 ```
 
 ### 2. Development Mode
+
 ```bash
 # Start the development server (with hot reload)
 npm run dev
@@ -52,6 +58,7 @@ cargo tauri dev
 ```
 
 ### 3. Build for Production
+
 ```bash
 # If you have not built frontend project, enter the /frontend and run the command below
 # npm run build
@@ -66,6 +73,7 @@ The built application will be in `src-tauri/target/release/bundle/`
 ## 🎮 How to Use
 
 ### Basic Workflow
+
 1. **Select Port** - Choose from available serial ports
 2. **Configure** - Set baud rate, data bits, parity, etc.
 3. **Connect** - Click connect to establish communication
@@ -74,6 +82,7 @@ The built application will be in `src-tauri/target/release/bundle/`
 6. **Export** - Save your communication logs for analysis
 
 ### Interface Overview
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Serial Debug Assistant                                      │
@@ -92,6 +101,7 @@ The built application will be in `src-tauri/target/release/bundle/`
 ```
 
 ### Example: Testing an Arduino
+
 1. Connect Arduino to USB
 2. Select the COM port (e.g., COM3)
 3. Set baud rate to 115200
@@ -103,18 +113,22 @@ The built application will be in `src-tauri/target/release/bundle/`
 ## 🛠️ Technical Details
 
 ### Architecture
+
 - **Backend**: Rust with Tauri framework
+  
   - Real serial port communication via `serialport` crate
   - Async/await with Tokio runtime
   - Type-safe API with Serde serialization
-  
+
 - **Frontend**: React with TypeScript
+  
   - Modern React 18 with hooks
   - Tailwind CSS for beautiful styling
   - Lucide React icons for consistency
   - Vite for fast development and building
 
 ### Project Structure
+
 ```
 📦 RSerialDebugAssistant/
 ├── 📁 src-tauri/                 # Rust backend
@@ -144,16 +158,20 @@ The built application will be in `src-tauri/target/release/bundle/`
 ## 🎨 Screenshots
 
 ### Main Interface
-*Beautiful dark theme with professional layout*
+
+![](./assets/MainInterface.png)
 
 ### Port Selection
-*Smart detection of real serial ports only*
+
+![](./assets/PortSelection.png)
 
 ### Real-time Communication
-*Live logging with syntax highlighting*
+
+![](./assets/LogView.png)
 
 ### Configuration Panel
-*Comprehensive serial port settings*
+
+![](./assets/ConfigPanel.png)
 
 ## 🤝 Contributing
 
@@ -179,5 +197,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Lucide React](https://lucide.dev/) - Beautiful icon library
 
 ---
-
-**Built with ❤️ using Rust, React, and modern web technologies** 🚀
