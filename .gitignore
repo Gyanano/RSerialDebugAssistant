@@ -1,0 +1,59 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Tauri
+/src-tauri/target/
+
+# Frontend
+/frontend/dist/
+/frontend/node_modules/
+/frontend/package-lock.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+serial_logs*.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.pdb
+*.app
+*.dmg
+*.deb
+*.rpm
+*.msi
+
+# Temporary files
+.tmp/
+.temp/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Coverage
+coverage/
+*.profraw
+
+# Documentation build
+/book/
+*.md
+!README.md
