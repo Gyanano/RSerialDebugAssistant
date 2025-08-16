@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { Send, Type, Hash } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import { Send, Type, Hash, Clock, Play, Pause } from 'lucide-react';
 import { DataFormat } from '../types';
 
 interface SendPanelProps {
@@ -20,6 +20,10 @@ const SendPanel: React.FC<SendPanelProps> = ({
   disabled,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isScheduledEnabled, setIsScheduledEnabled] = useState(false);
+  const [scheduledInterval, setScheduledInterval] = useState(1000); // Default 1000ms
+  const [isScheduledRunning, setIsScheduledRunning] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -35,6 +39,61 @@ const SendPanel: React.FC<SendPanelProps> = ({
       onSend();
     }
   };
+
+  const handleScheduledToggle = () => {
+    const newEnabledState = !isScheduledEnabled;
+    setIsScheduledEnabled(newEnabledState);
+    
+    if (newEnabledState && value.trim() && !disabled) {
+      startScheduledSending();
+    } else if (!newEnabledState) {
+      stopScheduledSending();
+    }
+  };
+
+  const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newInterval = Math.max(100, parseInt(e.target.value) || 1000);
+    setScheduledInterval(newInterval);
+    
+    // Restart interval with new timing if already running
+    if (isScheduledRunning) {
+      stopScheduledSending();
+      setTimeout(() => startScheduledSending(), 0);
+    }
+  };
+
+  const startScheduledSending = () => {
+    if (!value.trim() || disabled) return;
+    
+    setIsScheduledRunning(true);
+    intervalRef.current = setInterval(() => {
+      onSend();
+    }, scheduledInterval);
+  };
+
+  const stopScheduledSending = () => {
+    setIsScheduledRunning(false);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+
+  // Cleanup when disabled or value becomes empty
+  useEffect(() => {
+    if (disabled || !value.trim()) {
+      stopScheduledSending();
+    }
+  }, [disabled, value]);
 
   const getPlaceholderText = () => {
     if (format === 'Text') {
@@ -139,16 +198,61 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
         {/* Controls */}
         <div className="w-48 space-y-3">
-          <button
-            onClick={handleSendClick}
-            disabled={disabled || !value.trim()}
-            className="btn-primary w-full"
-          >
-            <div className="flex items-center justify-center space-x-2">
-              <Send size={16} />
-              <span>Send</span>
+          {/* Scheduled Sending Controls */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Cycle Send</span>
+              <button
+                onClick={handleScheduledToggle}
+                disabled={disabled}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  isScheduledEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                } ${
+                  disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                }`}
+                title={isScheduledEnabled ? 'Stop scheduled sending' : 'Start scheduled sending'}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isScheduledEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
-          </button>
+
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Clock size={14} className="text-gray-400" />
+                <input
+                  type="number"
+                  value={scheduledInterval}
+                  onChange={handleIntervalChange}
+                  className="input-field text-sm w-full"
+                  min="100"
+                  max="60000"
+                  step="100"
+                  disabled={disabled || isScheduledRunning}
+                  title="Send interval in milliseconds"
+                />
+                <span className="text-xs text-gray-400">ms</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSendClick}
+              disabled={disabled || !value.trim() || isScheduledEnabled}
+              className={`w-full px-3 py-2 rounded text-sm font-medium transition-colors ${
+                !isScheduledEnabled && !disabled && value.trim()
+                  ? 'btn-primary'
+                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex items-center justify-center space-x-2">
+                <Send size={16} />
+                <span>{isScheduledEnabled ? 'Scheduled Active' : 'Send'}</span>
+              </div>
+            </button>
+          </div>
 
           {format === 'Hex' && (
             <div>
@@ -169,7 +273,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
             </div>
           )}
 
-          {!disabled && (
+          {!disabled && !isScheduledEnabled && (
             <div className="text-xs text-gray-400 space-y-1">
               <div>💡 Tips:</div>
               <div>• Use Ctrl+Enter to send</div>
