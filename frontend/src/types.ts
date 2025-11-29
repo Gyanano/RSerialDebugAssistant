@@ -25,6 +25,15 @@ export type FlowControl = 'None' | 'Software' | 'Hardware';
 export type DataFormat = 'Text' | 'Hex';
 export type Direction = 'Sent' | 'Received';
 
+// Checksum types
+export type ChecksumType = 'None' | 'XOR' | 'ADD8' | 'CRC8' | 'CRC16' | 'CCITT-CRC16';
+
+export interface ChecksumConfig {
+  type: ChecksumType;
+  startIndex: number;  // 0-indexed, starting position (0 = first byte)
+  endIndex: number;    // 0-indexed, supports negative (-1 = last byte, -2 = second to last)
+}
+
 export interface LogEntry {
   id?: number;
   timestamp: string;
@@ -41,4 +50,21 @@ export interface ConnectionStatus {
   bytes_sent: number;
   bytes_received: number;
   connection_time: string | null;
+}
+
+// Quick Command types
+export type LineEnding = 'None' | '\\r' | '\\n' | '\\r\\n';
+
+export interface QuickCommand {
+  id: string;
+  selected: boolean;      // For batch sending selection
+  isHex: boolean;         // Send as hex format
+  content: string;        // Command content
+  lineEnding: LineEnding; // Line ending option
+}
+
+export interface QuickCommandList {
+  id: string;
+  name: string;
+  commands: QuickCommand[];
 }

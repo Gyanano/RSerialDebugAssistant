@@ -7,8 +7,50 @@ import LogViewer from './components/LogViewer';
 import SendPanel from './components/SendPanel';
 import StatusBar from './components/StatusBar';
 import SettingsModal from './components/SettingsModal';
-import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat } from './types';
+import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding } from './types';
 import { useTheme } from './contexts/ThemeContext';
+import { appendChecksum } from './utils/checksum';
+
+const QUICK_COMMANDS_STORAGE_KEY = 'serial-debug-quick-commands';
+const INITIAL_COMMANDS = 20;
+
+const createEmptyCommand = (): QuickCommand => ({
+  id: crypto.randomUUID(),
+  selected: false,
+  isHex: false,
+  content: '',
+  lineEnding: 'None',
+});
+
+const createDefaultList = (): QuickCommandList => ({
+  id: crypto.randomUUID(),
+  name: 'Default',
+  commands: Array.from({ length: INITIAL_COMMANDS }, createEmptyCommand),
+});
+
+const loadQuickCommandsFromStorage = (): { lists: QuickCommandList[]; currentListId: string } => {
+  try {
+    const stored = localStorage.getItem(QUICK_COMMANDS_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.lists && parsed.lists.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load quick commands from storage:', e);
+  }
+  const defaultList = createDefaultList();
+  return { lists: [defaultList], currentListId: defaultList.id };
+};
+
+const saveQuickCommandsToStorage = (lists: QuickCommandList[], currentListId: string) => {
+  try {
+    localStorage.setItem(QUICK_COMMANDS_STORAGE_KEY, JSON.stringify({ lists, currentListId }));
+  } catch (e) {
+    console.error('Failed to save quick commands to storage:', e);
+  }
+};
 
 function App() {
   const { colors } = useTheme();
@@ -34,8 +76,23 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [sendText, setSendText] = useState('');
   const [sendFormat, setSendFormat] = useState<DataFormat>('Text');
+  const [checksumConfig, setChecksumConfig] = useState<ChecksumConfig>({
+    type: 'None',
+    startIndex: 0,   // 0 = first byte
+    endIndex: -1,    // -1 = last byte (include all)
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [userHasSelectedPort, setUserHasSelectedPort] = useState(false);
+
+  // Quick Command Lists state
+  const [quickCommandLists, setQuickCommandLists] = useState<QuickCommandList[]>(() => {
+    const { lists } = loadQuickCommandsFromStorage();
+    return lists;
+  });
+  const [currentQuickCommandListId, setCurrentQuickCommandListId] = useState<string>(() => {
+    const { currentListId } = loadQuickCommandsFromStorage();
+    return currentListId;
+  });
 
   // 使用useRef来保存最新的状态值，避免闭包陷阱
   const selectedPortRef = useRef(selectedPort);
@@ -49,6 +106,11 @@ function App() {
   useEffect(() => {
     userHasSelectedPortRef.current = userHasSelectedPort;
   }, [userHasSelectedPort]);
+
+  // Persist quick commands to localStorage
+  useEffect(() => {
+    saveQuickCommandsToStorage(quickCommandLists, currentQuickCommandListId);
+  }, [quickCommandLists, currentQuickCommandListId]);
 
   // 使用useCallback确保函数能访问到最新的状态
   const loadPorts = useCallback(async () => {
@@ -159,12 +221,56 @@ function App() {
 
   const handleSendData = async () => {
     if (!sendText.trim() || !connectionStatus.is_connected) return;
-    
+
     try {
-      await invoke('send_data', {
-        data: sendText,
-        format: sendFormat,
-      });
+      let dataToSend = sendText;
+
+      // If checksum is enabled, we need to calculate and append it
+      if (checksumConfig.type !== 'None') {
+        // Convert input to bytes first
+        let bytes: Uint8Array;
+        if (sendFormat === 'Text') {
+          bytes = new TextEncoder().encode(sendText);
+        } else {
+          // Parse hex string
+          const cleanHex = sendText.replace(/\s/g, '');
+          if (cleanHex.length % 2 !== 0) {
+            alert('Hex string must have even number of characters');
+            return;
+          }
+          const byteArray: number[] = [];
+          for (let i = 0; i < cleanHex.length; i += 2) {
+            const byte = parseInt(cleanHex.substr(i, 2), 16);
+            if (isNaN(byte)) {
+              alert('Invalid hex characters');
+              return;
+            }
+            byteArray.push(byte);
+          }
+          bytes = new Uint8Array(byteArray);
+        }
+
+        // Append checksum
+        const bytesWithChecksum = appendChecksum(bytes, checksumConfig);
+
+        // Convert back to hex string for sending (always send as hex when checksum is added)
+        dataToSend = Array.from(bytesWithChecksum)
+          .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+          .join(' ');
+
+        // Send as hex format when checksum is appended
+        await invoke('send_data', {
+          data: dataToSend,
+          format: 'Hex',
+        });
+      } else {
+        // No checksum, send as-is
+        await invoke('send_data', {
+          data: sendText,
+          format: sendFormat,
+        });
+      }
+
       // Don't clear the input - keep the content for re-sending
       await updateLogs();
     } catch (error) {
@@ -187,16 +293,80 @@ function App() {
       // In a real app, you'd use a file dialog here
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `serial_logs_${timestamp}.txt`;
-      
+
       await invoke('export_logs', {
         filePath: filename,
         format: 'Txt',
       });
-      
+
       alert(`Logs exported to ${filename}`);
     } catch (error) {
       console.error('Failed to export logs:', error);
       alert(`Failed to export logs: ${error}`);
+    }
+  };
+
+  // Helper function to append line ending to data
+  const appendLineEnding = (data: string, lineEnding: LineEnding, isHex: boolean): string => {
+    if (lineEnding === 'None') return data;
+
+    const lineEndingMap: Record<string, string> = {
+      '\\r': isHex ? '0D' : '\r',
+      '\\n': isHex ? '0A' : '\n',
+      '\\r\\n': isHex ? '0D 0A' : '\r\n',
+    };
+
+    const ending = lineEndingMap[lineEnding];
+    if (!ending) return data;
+
+    if (isHex) {
+      return data.trim() ? `${data} ${ending}` : ending;
+    }
+    return data + ending;
+  };
+
+  // Handler for sending a single quick command
+  const handleSendQuickCommand = async (content: string, isHex: boolean, lineEnding: LineEnding) => {
+    if (!content.trim() || !connectionStatus.is_connected) return;
+
+    try {
+      const dataToSend = appendLineEnding(content, lineEnding, isHex);
+      const format: DataFormat = isHex ? 'Hex' : 'Text';
+
+      await invoke('send_data', {
+        data: dataToSend,
+        format: format,
+      });
+
+      await updateLogs();
+    } catch (error) {
+      console.error('Failed to send quick command:', error);
+      alert(`Failed to send: ${error}`);
+    }
+  };
+
+  // Handler for sending all selected quick commands
+  const handleSendSelectedQuickCommands = async (commands: QuickCommand[]) => {
+    if (commands.length === 0 || !connectionStatus.is_connected) return;
+
+    try {
+      for (const command of commands) {
+        const dataToSend = appendLineEnding(command.content, command.lineEnding, command.isHex);
+        const format: DataFormat = command.isHex ? 'Hex' : 'Text';
+
+        await invoke('send_data', {
+          data: dataToSend,
+          format: format,
+        });
+
+        // Small delay between commands to ensure proper sequencing
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      await updateLogs();
+    } catch (error) {
+      console.error('Failed to send selected commands:', error);
+      alert(`Failed to send: ${error}`);
     }
   };
 
@@ -281,7 +451,15 @@ function App() {
               format={sendFormat}
               onFormatChange={setSendFormat}
               onSend={handleSendData}
-              disabled={!connectionStatus.is_connected}
+              isConnected={connectionStatus.is_connected}
+              checksumConfig={checksumConfig}
+              onChecksumConfigChange={setChecksumConfig}
+              quickCommandLists={quickCommandLists}
+              currentQuickCommandListId={currentQuickCommandListId}
+              onQuickCommandListsChange={setQuickCommandLists}
+              onCurrentQuickCommandListChange={setCurrentQuickCommandListId}
+              onSendQuickCommand={handleSendQuickCommand}
+              onSendSelectedQuickCommands={handleSendSelectedQuickCommands}
             />
           </div>
         </div>
