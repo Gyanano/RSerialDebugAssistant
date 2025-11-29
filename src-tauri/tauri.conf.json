@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
   "productName": "Serial Debug Assistant",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "Gyanano",
   "build": {
     "frontendDist": "../frontend/dist",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:5173"
   },
   "app": {
     "windows": [

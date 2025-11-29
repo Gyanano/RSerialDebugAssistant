@@ -147,6 +147,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(AppState::default())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_serial_ports,
             connect_to_port,

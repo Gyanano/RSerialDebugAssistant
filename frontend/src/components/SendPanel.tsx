@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Send, Type, Hash, Clock, Play, Pause } from 'lucide-react';
 import { DataFormat } from '../types';
+import ToggleSwitch from './ToggleSwitch';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface SendPanelProps {
   value: string;
@@ -19,11 +21,12 @@ const SendPanel: React.FC<SendPanelProps> = ({
   onSend,
   disabled,
 }) => {
+  const { colors } = useTheme();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isScheduledEnabled, setIsScheduledEnabled] = useState(false);
   const [scheduledInterval, setScheduledInterval] = useState(1000); // Default 1000ms
   const [isScheduledRunning, setIsScheduledRunning] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -131,138 +134,141 @@ const SendPanel: React.FC<SendPanelProps> = ({
   ];
 
   return (
-    <div className="bg-gray-800 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          <Send size={16} className="text-gray-400" />
-          <h3 className="font-semibold text-white">Send Data</h3>
+    <div style={{ backgroundColor: colors.bgSidebar }}>
+      {/* Send Header */}
+      <div
+        className="px-4 py-2 flex justify-between items-center"
+        style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+      >
+        <div className="flex items-center space-x-2" style={{ color: colors.textSecondary }}>
+          <Send size={14} style={{ color: colors.textTertiary }} />
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.textPrimary }}>Payload</span>
         </div>
-        
-        <div className="flex items-center space-x-2">
-          <span className="text-xs text-gray-400">Format:</span>
+
+        <div
+          className="p-0.5 rounded-[6px] flex text-xs font-medium"
+          style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
+        >
           <button
             onClick={() => onFormatChange('Text')}
-            className={`flex items-center space-x-1 px-3 py-1 rounded text-xs transition-colors ${
-              format === 'Text'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
-            }`}
+            className="px-3 py-0.5 rounded-[4px] transition-all"
+            style={{
+              backgroundColor: format === 'Text' ? colors.accent : 'transparent',
+              color: format === 'Text' ? '#ffffff' : colors.textSecondary,
+              boxShadow: format === 'Text' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
+            }}
             disabled={disabled}
           >
-            <Type size={12} />
-            <span>Text</span>
+            Text
           </button>
           <button
             onClick={() => onFormatChange('Hex')}
-            className={`flex items-center space-x-1 px-3 py-1 rounded text-xs transition-colors ${
-              format === 'Hex'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
-            }`}
+            className="px-3 py-0.5 rounded-[4px] transition-all"
+            style={{
+              backgroundColor: format === 'Hex' ? colors.accent : 'transparent',
+              color: format === 'Hex' ? '#ffffff' : colors.textSecondary,
+              boxShadow: format === 'Hex' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
+            }}
             disabled={disabled}
           >
-            <Hash size={12} />
-            <span>Hex</span>
+            Hex
           </button>
         </div>
       </div>
 
-      <div className="flex space-x-4">
+      {/* Send Content */}
+      <div className="flex p-3 space-x-3">
         {/* Text Input */}
-        <div className="flex-1">
+        <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={getPlaceholderText()}
-            className="w-full h-24 resize-none input-field font-mono text-sm"
+            className="w-full h-24 resize-none rounded-[6px] p-3 text-sm font-mono focus:outline-none focus:ring-2 shadow-inner"
+            style={{
+              backgroundColor: colors.bgMain,
+              border: `1px solid ${colors.border}`,
+              color: colors.textPrimary,
+              '--tw-ring-color': `${colors.accent}80`
+            } as React.CSSProperties}
             disabled={disabled}
           />
-          
-          <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
+
+          <div className="flex items-center justify-between mt-2 text-xs" style={{ color: colors.textTertiary }}>
             <div>
               {format === 'Text' && (
                 <span>Characters: {value.length}</span>
               )}
               <span className="ml-4">Bytes: {getByteCount()}</span>
             </div>
-            <div>
-              <kbd className="px-1 py-0.5 bg-gray-700 rounded text-xs">Ctrl</kbd>
-              {' + '}
-              <kbd className="px-1 py-0.5 bg-gray-700 rounded text-xs">Enter</kbd>
-              {' to send'}
-            </div>
           </div>
         </div>
 
         {/* Controls */}
-        <div className="w-48 space-y-3">
-          {/* Scheduled Sending Controls */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Cycle Send</span>
-              <button
-                onClick={handleScheduledToggle}
+        <div className="w-40 flex flex-col space-y-2">
+          <button
+            onClick={handleSendClick}
+            disabled={disabled || !value.trim() || isScheduledEnabled}
+            className="w-full h-9 font-medium rounded-[6px] shadow-macos-btn transition-all active:scale-[0.98] flex items-center justify-center space-x-2"
+            style={{
+              backgroundColor: !isScheduledEnabled && !disabled && value.trim() ? colors.accent : colors.bgSurface,
+              color: !isScheduledEnabled && !disabled && value.trim() ? '#ffffff' : colors.textTertiary,
+              opacity: disabled || !value.trim() || isScheduledEnabled ? 0.5 : 1,
+              cursor: disabled || !value.trim() || isScheduledEnabled ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <span className="text-sm">{isScheduledEnabled ? 'Scheduled Active' : 'Send'}</span>
+          </button>
+
+          <div
+            className="rounded-[6px] p-2"
+            style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs" style={{ color: colors.textTertiary }}>Cycle (ms)</span>
+              <ToggleSwitch
+                checked={isScheduledEnabled}
+                onChange={handleScheduledToggle}
                 disabled={disabled}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isScheduledEnabled ? 'bg-blue-600' : 'bg-gray-600'
-                } ${
-                  disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-                }`}
                 title={isScheduledEnabled ? 'Stop scheduled sending' : 'Start scheduled sending'}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    isScheduledEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+              />
             </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <Clock size={14} className="text-gray-400" />
-                <input
-                  type="number"
-                  value={scheduledInterval}
-                  onChange={handleIntervalChange}
-                  className="input-field text-sm w-full"
-                  min="100"
-                  max="60000"
-                  step="100"
-                  disabled={disabled || isScheduledRunning}
-                  title="Send interval in milliseconds"
-                />
-                <span className="text-xs text-gray-400">ms</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleSendClick}
-              disabled={disabled || !value.trim() || isScheduledEnabled}
-              className={`w-full px-3 py-2 rounded text-sm font-medium transition-colors ${
-                !isScheduledEnabled && !disabled && value.trim()
-                  ? 'btn-primary'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <div className="flex items-center justify-center space-x-2">
-                <Send size={16} />
-                <span>{isScheduledEnabled ? 'Scheduled Active' : 'Send'}</span>
-              </div>
-            </button>
+            <input
+              type="number"
+              value={scheduledInterval}
+              onChange={handleIntervalChange}
+              className="w-full rounded px-2 py-1 text-xs text-right focus:outline-none"
+              style={{
+                backgroundColor: colors.bgMain,
+                border: `1px solid ${colors.border}`,
+                color: colors.textSecondary
+              }}
+              min="100"
+              max="60000"
+              step="100"
+              disabled={disabled || isScheduledRunning}
+              title="Send interval in milliseconds"
+            />
           </div>
 
           {format === 'Hex' && (
             <div>
-              <h4 className="text-xs font-medium text-gray-300 mb-2">Quick Insert:</h4>
+              <h4 className="text-xs font-medium mb-2" style={{ color: colors.textTertiary }}>Quick Insert:</h4>
               <div className="grid grid-cols-2 gap-1">
                 {commonHexValues.map((item) => (
                   <button
                     key={item.value}
                     onClick={() => insertCommonHex(item.value)}
-                    className="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded font-mono transition-colors"
+                    className="text-xs px-2 py-1 rounded-[4px] font-mono transition-colors"
+                    style={{
+                      backgroundColor: colors.buttonSecondaryBg,
+                      border: `1px solid ${colors.borderLight}`,
+                      color: colors.textSecondary
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
                     disabled={disabled}
                     title={item.description}
                   >
@@ -270,14 +276,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-
-          {!disabled && !isScheduledEnabled && (
-            <div className="text-xs text-gray-400 space-y-1">
-              <div>💡 Tips:</div>
-              <div>• Use Ctrl+Enter to send</div>
-              <div>• {format === 'Text' ? 'Switch to Hex for binary data' : 'Use spaces to separate hex bytes'}</div>
             </div>
           )}
         </div>

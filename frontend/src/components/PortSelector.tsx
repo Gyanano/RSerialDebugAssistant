@@ -1,6 +1,7 @@
 import React from 'react';
 import { RefreshCw, Plug, PlugZap } from 'lucide-react';
 import { SerialPortInfo, ConnectionStatus } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface PortSelectorProps {
   ports: SerialPortInfo[];
@@ -23,6 +24,8 @@ const PortSelector: React.FC<PortSelectorProps> = ({
   onDisconnect,
   isLoading,
 }) => {
+  const { colors } = useTheme();
+
   const handlePortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onPortSelect(e.target.value);
   };
@@ -57,34 +60,46 @@ const PortSelector: React.FC<PortSelectorProps> = ({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-white">Serial Ports</h3>
+    <div className="space-y-3">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>Connection</span>
         <button
           onClick={onRefresh}
-          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
+          className="p-1 rounded transition-colors"
+          style={{ color: colors.textSecondary }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = colors.bgHover;
+            e.currentTarget.style.color = colors.textPrimary;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.color = colors.textSecondary;
+          }}
           disabled={isLoading}
-          title="Refresh ports"
+          title="Refresh"
         >
-          <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+          <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
         </button>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          Available Ports
-        </label>
         <select
           value={selectedPort}
           onChange={handlePortChange}
-          className="select-field"
+          className="w-full text-sm py-1.5 pl-2 pr-8 rounded-[6px] focus:outline-none focus:ring-2 shadow-inner"
+          style={{
+            backgroundColor: colors.bgInput,
+            border: `1px solid ${colors.border}`,
+            color: colors.textPrimary,
+            '--tw-ring-color': `${colors.accent}80`
+          } as React.CSSProperties}
           disabled={connectionStatus.is_connected || isLoading || ports.length === 0}
         >
           {ports.length === 0 ? (
-            <option value="">No ports available</option>
+            <option value="" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>No ports available</option>
           ) : (
             ports.map((port) => (
-              <option key={port.port_name} value={port.port_name}>
+              <option key={port.port_name} value={port.port_name} style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>
                 {port.port_name} - {port.description || 'Unknown Device'}
               </option>
             ))
@@ -92,42 +107,46 @@ const PortSelector: React.FC<PortSelectorProps> = ({
         </select>
       </div>
 
-      <div className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
-        <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={handleConnectionToggle}
+          disabled={!selectedPort || isLoading}
+          className="flex-1 text-sm font-medium py-1 px-3 rounded-[6px] shadow-macos-btn transition-all active:scale-[0.98] flex items-center justify-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            backgroundColor: connectionStatus.is_connected ? colors.danger : colors.accent,
+            color: '#ffffff'
+          }}
+        >
+          {connectionStatus.is_connected ? (
+            <PlugZap size={12} />
+          ) : (
+            <Plug size={12} />
+          )}
+          <span>{getConnectionButtonText()}</span>
+        </button>
+        <div
+          className="flex items-center space-x-1.5 px-2 py-1 rounded-[6px]"
+          style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
+        >
           {getStatusIndicator()}
-          <span className="text-sm text-gray-300">
-            {connectionStatus.is_connected ? 'Connected' : 'Disconnected'}
+          <span className="text-xs" style={{ color: colors.textSecondary }}>
+            {connectionStatus.is_connected ? 'Online' : 'Offline'}
           </span>
-        </div>
-        <div className="text-xs text-gray-400">
-          {connectionStatus.port_name || 'No port'}
         </div>
       </div>
 
-      <button
-        onClick={handleConnectionToggle}
-        disabled={!selectedPort || isLoading}
-        className={getConnectionButtonClass()}
-      >
-        <div className="flex items-center justify-center space-x-2">
-          {connectionStatus.is_connected ? (
-            <PlugZap size={16} />
-          ) : (
-            <Plug size={16} />
-          )}
-          <span>{getConnectionButtonText()}</span>
-        </div>
-      </button>
-
       {selectedPort && !connectionStatus.is_connected && (
-        <div className="mt-4 p-3 bg-gray-700 rounded-lg">
-          <h4 className="font-medium text-sm text-gray-300 mb-2">Port Information</h4>
+        <div
+          className="mt-2 p-3 rounded-[6px]"
+          style={{ backgroundColor: colors.buttonSecondaryBg, border: `1px solid ${colors.borderLight}` }}
+        >
+          <h4 className="font-medium text-xs mb-2" style={{ color: colors.textSecondary }}>Port Information</h4>
           {(() => {
             const portInfo = ports.find(p => p.port_name === selectedPort);
             if (!portInfo) return null;
-            
+
             return (
-              <div className="space-y-1 text-xs text-gray-400">
+              <div className="space-y-1 text-xs" style={{ color: colors.textTertiary }}>
                 <div>Type: {portInfo.port_type}</div>
                 {portInfo.manufacturer && (
                   <div>Manufacturer: {portInfo.manufacturer}</div>

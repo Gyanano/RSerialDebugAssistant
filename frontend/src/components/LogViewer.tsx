@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Trash2, Download, Terminal } from 'lucide-react';
 import { LogEntry } from '../types';
+import ToggleSwitch from './ToggleSwitch';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface LogViewerProps {
   logs: LogEntry[];
@@ -10,6 +12,7 @@ interface LogViewerProps {
 }
 
 const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnected }) => {
+  const { colors } = useTheme();
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const previousLogsLengthRef = useRef(logs.length);
@@ -88,14 +91,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     }
   };
 
-  const getLogEntryClass = (direction: string) => {
-    return `log-entry ${direction.toLowerCase()}`;
-  };
-
-  const getDirectionClass = (direction: string) => {
-    return `log-direction ${direction.toLowerCase()}`;
-  };
-
   const sentCount = logs.filter(log => log.direction === 'Sent').length;
   const receivedCount = logs.filter(log => log.direction === 'Received').length;
   const totalBytes = logs.reduce((acc, log) => acc + log.data.length, 0);
@@ -103,64 +98,89 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Terminal size={18} className="text-gray-400" />
-            <h2 className="text-lg font-semibold text-white">Communication Log</h2>
-            <span className="text-sm text-gray-400">
-              ({logs.length} entries)
-            </span>
+      <div
+        className="h-12 px-4 flex items-center justify-between shadow-sm z-10"
+        style={{
+          backgroundColor: colors.bgHeader,
+          borderBottom: `1px solid ${colors.borderDark}`
+        }}
+      >
+        <div className="flex items-center space-x-2" style={{ color: colors.textSecondary }}>
+          <Terminal size={16} style={{ color: colors.textTertiary }} />
+          <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>Console Output</span>
+          <span className="text-xs" style={{ color: colors.textTertiary }}>
+            ({logs.length})
+          </span>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 mr-2">
+            <span className="text-xs" style={{ color: colors.textTertiary }}>Auto Scroll</span>
+            <ToggleSwitch
+              checked={autoScrollEnabled}
+              onChange={setAutoScrollEnabled}
+              title="Toggle auto-scroll to bottom"
+            />
           </div>
-          
-          <div className="flex items-center space-x-4">
-            {/* Auto Scroll Toggle */}
-            <label className="flex items-center space-x-2 text-sm text-gray-300">
-              <input
-                type="checkbox"
-                checked={autoScrollEnabled}
-                onChange={(e) => setAutoScrollEnabled(e.target.checked)}
-                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
-              />
-              <span>Auto Scroll</span>
-            </label>
-            
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={onExport}
-                className="btn-secondary text-sm px-3 py-1 flex items-center"
-                disabled={logs.length === 0}
-                title="Export logs"
-              >
-                <Download size={14} className="mr-1" />
-                Export
-              </button>
-              <button
-                onClick={onClear}
-                className="btn-secondary text-sm px-3 py-1 flex items-center"
-                disabled={logs.length === 0}
-                title="Clear logs"
-              >
-                <Trash2 size={14} className="mr-1" />
-                Clear
-              </button>
-            </div>
+
+          <div
+            className="flex rounded-md p-0.5"
+            style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
+          >
+            <button
+              onClick={onExport}
+              className="px-2 py-0.5 text-xs rounded flex items-center space-x-1 transition-colors"
+              style={{ color: colors.textSecondary }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = colors.bgHover;
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+              disabled={logs.length === 0}
+              title="Export logs"
+            >
+              <Download size={12} />
+              <span>Export</span>
+            </button>
+            <div className="w-px my-0.5 mx-0.5" style={{ backgroundColor: colors.border }}></div>
+            <button
+              onClick={onClear}
+              className="px-2 py-0.5 text-xs rounded flex items-center space-x-1 transition-colors"
+              style={{ color: colors.textSecondary }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = colors.bgHover;
+                e.currentTarget.style.color = colors.danger;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+              disabled={logs.length === 0}
+              title="Clear logs"
+            >
+              <Trash2 size={12} />
+              <span>Clear</span>
+            </button>
           </div>
         </div>
       </div>
 
       {/* Log Content */}
-      <div 
+      <div
         ref={logContainerRef}
-        className="flex-1 overflow-y-auto bg-gray-900 scrollbar-thin"
+        className="flex-1 overflow-y-auto scrollbar-thin p-1"
+        style={{ backgroundColor: colors.bgMain }}
       >
         {logs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-400">
+          <div className="flex items-center justify-center h-full" style={{ color: colors.textTertiary }}>
             <div className="text-center">
               <Terminal size={48} className="mx-auto mb-4 opacity-50" />
               <p className="text-lg">No communication data</p>
               <p className="text-sm mt-2">
-                {isConnected 
+                {isConnected
                   ? "Data will appear here when you send or receive messages"
                   : "Connect to a serial port to start logging communication"
                 }
@@ -168,17 +188,30 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
             </div>
           </div>
         ) : (
-          <div className="p-2">
+          <div className="space-y-0.5">
             {logs.map((log, index) => (
-              <div key={index} className={getLogEntryClass(log.direction)}>
+              <div
+                key={index}
+                className="py-1 px-2 rounded-[4px] transition-colors duration-150"
+                style={{
+                  borderLeft: `2px solid ${log.direction === 'Sent' ? colors.accent : colors.success}`,
+                  backgroundColor: log.direction === 'Sent' ? colors.logSentBg : colors.logReceivedBg
+                }}
+              >
                 <div className="flex items-start space-x-2">
-                  <span className="log-timestamp">
+                  <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
                     {formatTimestamp(log.timestamp)}
                   </span>
-                  <span className={getDirectionClass(log.direction)}>
+                  <span
+                    className="font-bold text-xs uppercase select-none"
+                    style={{ color: log.direction === 'Sent' ? colors.accent : colors.success }}
+                  >
                     {log.direction === 'Sent' ? 'TX' : 'RX'}
                   </span>
-                  <span className="flex-1 break-all font-mono text-sm whitespace-pre-wrap">
+                  <span
+                    className="flex-1 break-all font-mono text-sm whitespace-pre-wrap"
+                    style={{ color: colors.textPrimary }}
+                  >
                     {formatData(log.data)}
                   </span>
                 </div>
@@ -189,23 +222,25 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
       </div>
 
       {/* Footer with statistics */}
-      <div className="bg-gray-800 border-t border-gray-700 px-4 py-2">
-        <div className="flex items-center justify-between text-sm text-gray-400">
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <span>TX:</span>
-              <span className="text-blue-400 font-mono">{sentCount}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span>RX:</span>
-              <span className="text-green-400 font-mono">{receivedCount}</span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span>Total Bytes:</span>
-            <span className="font-mono">{totalBytes.toLocaleString()}</span>
-          </div>
+      <div
+        className="px-3 py-1 text-xs flex justify-between items-center select-none"
+        style={{
+          backgroundColor: colors.bgHeader,
+          borderTop: `1px solid ${colors.borderDark}`,
+          color: colors.textTertiary
+        }}
+      >
+        <div className="flex space-x-4">
+          <span className="flex items-center">
+            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.accent }}></div>
+            TX: {sentCount}
+          </span>
+          <span className="flex items-center">
+            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.success }}></div>
+            RX: {receivedCount}
+          </span>
         </div>
+        <span>Total: {totalBytes.toLocaleString()} Bytes</span>
       </div>
     </div>
   );

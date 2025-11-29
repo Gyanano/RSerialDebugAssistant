@@ -1,6 +1,7 @@
 import React from 'react';
 import { Activity, Clock, Settings2 } from 'lucide-react';
 import { ConnectionStatus, SerialConfig } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface StatusBarProps {
   connectionStatus: ConnectionStatus;
@@ -9,6 +10,8 @@ interface StatusBarProps {
 }
 
 const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, config }) => {
+  const { colors } = useTheme();
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -43,11 +46,11 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
 
   const getStatusColor = () => {
     if (connectionStatus.is_connected) {
-      return 'text-green-400';
+      return colors.success;
     } else if (selectedPort) {
-      return 'text-yellow-400';
+      return colors.warning;
     } else {
-      return 'text-gray-400';
+      return colors.textTertiary;
     }
   };
 
@@ -77,43 +80,34 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
   };
 
   return (
-    <div className="h-8 bg-gray-800 border-t border-gray-700 px-4 flex items-center justify-between text-xs">
+    <div
+      className="h-7 px-3 flex items-center justify-between text-[11px] select-none z-20"
+      style={{
+        backgroundColor: colors.bgSidebar,
+        borderTop: `1px solid ${colors.borderDark}`,
+        color: colors.textTertiary
+      }}
+    >
       {/* Left side - Connection status */}
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2">
-          <Activity size={12} className={getStatusColor()} />
-          <span className={getStatusColor()}>{getStatusText()}</span>
+        <div className="flex items-center space-x-1.5">
+          <Activity size={12} style={{ color: getStatusColor() }} />
+          <span style={{ color: getStatusColor() }}>{getStatusText()}</span>
         </div>
-        
+
         {connectionStatus.is_connected && (
           <>
-            <div className="flex items-center space-x-2 text-gray-400">
-              <Clock size={12} />
-              <span>{formatConnectionTime(connectionStatus.connection_time)}</span>
-            </div>
-            
-            <div className="flex items-center space-x-4 text-gray-400">
-              <span>
-                TX: <span className="text-blue-400 font-mono">{formatBytes(connectionStatus.bytes_sent)}</span>
-              </span>
-              <span>
-                RX: <span className="text-green-400 font-mono">{formatBytes(connectionStatus.bytes_received)}</span>
-              </span>
-            </div>
+            <div className="w-px h-3" style={{ backgroundColor: colors.border }}></div>
+            <span>{formatConnectionTime(connectionStatus.connection_time)}</span>
           </>
         )}
       </div>
 
       {/* Right side - Configuration and app info */}
-      <div className="flex items-center space-x-4 text-gray-400">
-        <div className="flex items-center space-x-2">
-          <Settings2 size={12} />
-          <span className="font-mono">{getConfigSummary()}</span>
-        </div>
-        
-        <div className="text-gray-500">
-          Serial Debug Assistant v1.0.0
-        </div>
+      <div className="flex items-center space-x-3" style={{ color: colors.textTertiary }}>
+        <span className="font-mono">{getConfigSummary()}</span>
+        <div className="w-px h-3" style={{ backgroundColor: colors.border }}></div>
+        <span>v1.0.1</span>
       </div>
     </div>
   );

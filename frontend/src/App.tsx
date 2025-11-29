@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Settings } from 'lucide-react';
 import PortSelector from './components/PortSelector';
 import ConfigPanel from './components/ConfigPanel';
 import LogViewer from './components/LogViewer';
 import SendPanel from './components/SendPanel';
 import StatusBar from './components/StatusBar';
+import SettingsModal from './components/SettingsModal';
 import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat } from './types';
+import { useTheme } from './contexts/ThemeContext';
 
 function App() {
+  const { colors } = useTheme();
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
   const [selectedPort, setSelectedPort] = useState<string>('');
+  const [showSettings, setShowSettings] = useState(false);
   const [config, setConfig] = useState<SerialConfig>({
     baud_rate: 115200,
     data_bits: 'Eight',
@@ -196,19 +201,44 @@ function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 text-white">
+    <div className="h-screen flex flex-col" style={{ backgroundColor: colors.bgMain, color: colors.textPrimary }}>
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
-        <div className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
+        <div className="w-80 flex flex-col relative z-20" style={{ 
+          backgroundColor: colors.bgSidebar, 
+          borderRight: `1px solid ${colors.borderDark}`,
+          backdropFilter: 'blur(20px)'
+        }}>
           {/* Header */}
-          <div className="p-4 border-b border-gray-700">
-            <h1 className="text-xl font-bold text-white">Serial Debug Assistant</h1>
-            <p className="text-sm text-gray-400 mt-1">Professional Serial Communication Tool</p>
+          <div className="p-4 pt-6 flex items-start justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+            <div>
+              <h1 className="text-base font-bold tracking-wide" style={{ color: colors.textPrimary }}>Serial Debug Assistant</h1>
+              <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>Professional Tool</p>
+            </div>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-1.5 rounded-md transition-colors focus:outline-none"
+              style={{ 
+                color: colors.textSecondary,
+                backgroundColor: 'transparent'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = colors.textPrimary;
+                e.currentTarget.style.backgroundColor = colors.bgHover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = colors.textSecondary;
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Settings"
+            >
+              <Settings size={16} />
+            </button>
           </div>
           
           {/* Port Selector */}
-          <div className="p-4 border-b border-gray-700">
+          <div className="p-4" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
             <PortSelector
               ports={ports}
               selectedPort={selectedPort}
@@ -232,7 +262,7 @@ function App() {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col relative" style={{ backgroundColor: colors.bgMain }}>
           {/* Log Viewer */}
           <div className="flex-1 flex flex-col min-h-0">
             <LogViewer
@@ -244,7 +274,7 @@ function App() {
           </div>
 
           {/* Send Panel */}
-          <div className="border-t border-gray-700 flex-shrink-0">
+          <div className="flex-shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] z-20" style={{ borderTop: `1px solid ${colors.borderDark}` }}>
             <SendPanel
               value={sendText}
               onChange={setSendText}
@@ -263,6 +293,9 @@ function App() {
         selectedPort={selectedPort}
         config={config}
       />
+
+      {/* Settings Modal */}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

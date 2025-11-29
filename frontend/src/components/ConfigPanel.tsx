@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, Edit3, X } from 'lucide-react';
 import { SerialConfig, DataBits, Parity, StopBits, FlowControl } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ConfigPanelProps {
   config: SerialConfig;
@@ -9,6 +10,7 @@ interface ConfigPanelProps {
 }
 
 const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled }) => {
+  const { colors } = useTheme();
   const [isCustomBaudRate, setIsCustomBaudRate] = useState(false);
   const [customBaudRate, setCustomBaudRate] = useState('9600');
 
@@ -53,16 +55,15 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
   };
 
   return (
-    <div className="p-4">
-      <div className="flex items-center space-x-2 mb-4">
-        <Settings size={16} className="text-gray-400" />
-        <h3 className="font-semibold text-white">Configuration</h3>
-      </div>
+    <div className="p-4 space-y-5">
+      {/* Baud Rate Group */}
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2 mb-1">
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>Communication</span>
+        </div>
 
-      <div className="space-y-4">
-        {/* Baud Rate */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             Baud Rate
           </label>
           <div className="flex items-center space-x-2">
@@ -71,7 +72,13 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
                 type="number"
                 value={customBaudRate}
                 onChange={handleCustomBaudRateChange}
-                className="input-field flex-1"
+                className="flex-1 text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: colors.bgInput,
+                  border: `1px solid ${colors.border}`,
+                  color: colors.textPrimary,
+                  '--tw-ring-color': `${colors.accent}80`
+                } as React.CSSProperties}
                 disabled={disabled}
                 placeholder="9600"
                 min="1"
@@ -80,11 +87,17 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
               <select
                 value={config.baud_rate}
                 onChange={handleBaudRateSelectChange}
-                className="select-field flex-1"
+                className="flex-1 text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: colors.buttonSecondaryBg,
+                  border: `1px solid transparent`,
+                  color: colors.textPrimary,
+                  '--tw-ring-color': `${colors.accent}80`
+                } as React.CSSProperties}
                 disabled={disabled}
               >
                 {baudRateOptions.map((rate) => (
-                  <option key={rate} value={rate}>
+                  <option key={rate} value={rate} style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>
                     {rate}
                   </option>
                 ))}
@@ -92,111 +105,157 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
             )}
             <button
               onClick={toggleCustomBaudRate}
-              className="p-2 bg-gray-600 hover:bg-gray-500 text-gray-300 rounded transition-colors"
+              className="p-2 rounded-[6px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: colors.buttonSecondaryBg,
+                border: `1px solid ${colors.borderLight}`,
+                color: colors.textSecondary
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
               disabled={disabled}
               title={isCustomBaudRate ? "Switch to preset values" : "Enter custom baud rate"}
             >
-              {isCustomBaudRate ? <X size={16} /> : <Edit3 size={16} />}
+              {isCustomBaudRate ? <X size={14} /> : <Edit3 size={14} />}
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Data Bits */}
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Data Bits
-          </label>
-          <select
-            value={config.data_bits}
-            onChange={(e) => updateConfig('data_bits', e.target.value as DataBits)}
-            className="select-field"
-            disabled={disabled}
-          >
-            <option value="Five">5</option>
-            <option value="Six">6</option>
-            <option value="Seven">7</option>
-            <option value="Eight">8</option>
-          </select>
+      {/* Parameters Group */}
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2 mb-1">
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>Parameters</span>
         </div>
 
-        {/* Parity */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+              Data Bits
+            </label>
+            <select
+              value={config.data_bits}
+              onChange={(e) => updateConfig('data_bits', e.target.value as DataBits)}
+              className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: colors.buttonSecondaryBg,
+                border: `1px solid transparent`,
+                color: colors.textPrimary,
+                '--tw-ring-color': `${colors.accent}80`
+              } as React.CSSProperties}
+              disabled={disabled}
+            >
+              <option value="Five" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>5</option>
+              <option value="Six" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>6</option>
+              <option value="Seven" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>7</option>
+              <option value="Eight" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>8</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+              Stop Bits
+            </label>
+            <select
+              value={config.stop_bits}
+              onChange={(e) => updateConfig('stop_bits', e.target.value as StopBits)}
+              className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: colors.buttonSecondaryBg,
+                border: `1px solid transparent`,
+                color: colors.textPrimary,
+                '--tw-ring-color': `${colors.accent}80`
+              } as React.CSSProperties}
+              disabled={disabled}
+            >
+              <option value="One" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>1</option>
+              <option value="OnePointFive" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>1.5</option>
+              <option value="Two" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>2</option>
+            </select>
+          </div>
+        </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             Parity
           </label>
           <select
             value={config.parity}
             onChange={(e) => updateConfig('parity', e.target.value as Parity)}
-            className="select-field"
+            className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: colors.buttonSecondaryBg,
+              border: `1px solid transparent`,
+              color: colors.textPrimary,
+              '--tw-ring-color': `${colors.accent}80`
+            } as React.CSSProperties}
             disabled={disabled}
           >
-            <option value="None">None</option>
-            <option value="Odd">Odd</option>
-            <option value="Even">Even</option>
-            <option value="Mark">Mark</option>
-            <option value="Space">Space</option>
+            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>None</option>
+            <option value="Odd" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Odd</option>
+            <option value="Even" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Even</option>
+            <option value="Mark" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Mark</option>
+            <option value="Space" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Space</option>
           </select>
         </div>
 
-        {/* Stop Bits */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Stop Bits
-          </label>
-          <select
-            value={config.stop_bits}
-            onChange={(e) => updateConfig('stop_bits', e.target.value as StopBits)}
-            className="select-field"
-            disabled={disabled}
-          >
-            <option value="One">1</option>
-            <option value="OnePointFive">1.5</option>
-            <option value="Two">2</option>
-          </select>
-        </div>
-
-        {/* Flow Control */}
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             Flow Control
           </label>
           <select
             value={config.flow_control}
             onChange={(e) => updateConfig('flow_control', e.target.value as FlowControl)}
-            className="select-field"
+            className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: colors.buttonSecondaryBg,
+              border: `1px solid transparent`,
+              color: colors.textPrimary,
+              '--tw-ring-color': `${colors.accent}80`
+            } as React.CSSProperties}
             disabled={disabled}
           >
-            <option value="None">None</option>
-            <option value="Software">Software (XON/XOFF)</option>
-            <option value="Hardware">Hardware (RTS/CTS)</option>
+            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>None</option>
+            <option value="Software" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Software (XON/XOFF)</option>
+            <option value="Hardware" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Hardware (RTS/CTS)</option>
           </select>
         </div>
 
-        {/* Timeout */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             Timeout (ms)
           </label>
           <input
             type="number"
             value={config.timeout}
             onChange={(e) => updateConfig('timeout', parseInt(e.target.value) || 1000)}
-            className="input-field"
+            className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: colors.bgInput,
+              border: `1px solid ${colors.border}`,
+              color: colors.textPrimary,
+              '--tw-ring-color': `${colors.accent}80`
+            } as React.CSSProperties}
             disabled={disabled}
             min="1"
             max="10000"
             placeholder="1000"
           />
         </div>
-
-        {disabled && (
-          <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
-            <p className="text-xs text-yellow-400">
-              Disconnect to modify configuration
-            </p>
-          </div>
-        )}
       </div>
+
+      {disabled && (
+        <div
+          className="p-3 rounded-[6px]"
+          style={{
+            backgroundColor: `${colors.warning}20`,
+            border: `1px solid ${colors.warning}30`
+          }}
+        >
+          <p className="text-xs" style={{ color: colors.warning }}>
+            Disconnect to modify configuration
+          </p>
+        </div>
+      )}
     </div>
   );
 };
