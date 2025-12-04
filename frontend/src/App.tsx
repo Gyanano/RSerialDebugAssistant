@@ -152,12 +152,25 @@ function App() {
   // Load ports on component mount
   useEffect(() => {
     loadPorts();
-    
+
+    // Initialize log limit from localStorage
+    const initLogLimit = async () => {
+      const savedMaxLogLines = localStorage.getItem('serialDebug_maxLogLines');
+      if (savedMaxLogLines) {
+        try {
+          await invoke('set_log_limit', { limit: parseInt(savedMaxLogLines, 10) });
+        } catch (error) {
+          console.error('Failed to initialize log limit:', error);
+        }
+      }
+    };
+    initLogLimit();
+
     // Set up intervals for updating status, logs, and ports
     const statusInterval = setInterval(updateStatus, 1000);
     const logsInterval = setInterval(updateLogs, 100); // More frequent log updates
     const portsInterval = setInterval(loadPorts, 3000); // Check for new ports every 3 seconds
-    
+
     return () => {
       clearInterval(statusInterval);
       clearInterval(logsInterval);

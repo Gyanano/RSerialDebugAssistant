@@ -142,6 +142,19 @@ async fn list_sessions(state: State<'_, AppState>) -> Result<Vec<String>, String
     Ok(sessions.keys().cloned().collect())
 }
 
+#[tauri::command]
+async fn set_log_limit(state: State<'_, AppState>, limit: usize) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_max_log_entries(limit);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_log_limit(state: State<'_, AppState>) -> Result<usize, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    Ok(manager.get_max_log_entries())
+}
+
 fn main() {
     env_logger::init();
 
@@ -159,7 +172,9 @@ fn main() {
             export_logs,
             save_session,
             load_session,
-            list_sessions
+            list_sessions,
+            set_log_limit,
+            get_log_limit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

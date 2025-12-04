@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Folder, Moon, Sun } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -12,18 +13,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const { themeMode, setThemeMode, colors } = useTheme();
   const [logPath, setLogPath] = useState('~/Documents/SerialLogs');
   const [soundEffects, setSoundEffects] = useState(false);
+  const [maxLogLines, setMaxLogLines] = useState(1000);
   const [isBrowsing, setIsBrowsing] = useState(false);
 
   // Load saved settings from localStorage on component mount
   useEffect(() => {
     const savedLogPath = localStorage.getItem('serialDebug_logPath');
     const savedSoundEffects = localStorage.getItem('serialDebug_soundEffects');
+    const savedMaxLogLines = localStorage.getItem('serialDebug_maxLogLines');
 
     if (savedLogPath) {
       setLogPath(savedLogPath);
     }
     if (savedSoundEffects) {
       setSoundEffects(JSON.parse(savedSoundEffects));
+    }
+    if (savedMaxLogLines) {
+      setMaxLogLines(parseInt(savedMaxLogLines, 10));
     }
   }, []);
 
@@ -37,6 +43,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const handleSoundEffectsChange = (enabled: boolean) => {
     setSoundEffects(enabled);
     localStorage.setItem('serialDebug_soundEffects', JSON.stringify(enabled));
+  };
+
+  // Save max log lines to localStorage and sync with backend
+  const handleMaxLogLinesChange = async (value: number) => {
+    const clampedValue = Math.min(10000, Math.max(100, value));
+    setMaxLogLines(clampedValue);
+    localStorage.setItem('serialDebug_maxLogLines', clampedValue.toString());
+    try {
+      await invoke('set_log_limit', { limit: clampedValue });
+    } catch (error) {
+      console.error('Error setting log limit:', error);
+    }
   };
 
   // Handle folder selection with Tauri dialog
@@ -199,6 +217,31 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     <Folder size={16} />
                   </button>
                 </div>
+              </div>
+
+              {/* Max Log Lines Item */}
+              <div
+                className="p-3 flex items-center justify-between"
+                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm" style={{ color: colors.textPrimary }}>Maximum Log Lines</span>
+                  <span className="text-xs" style={{ color: colors.textTertiary }}>Number of log entries to display (100-10000)</span>
+                </div>
+                <input
+                  type="number"
+                  min="100"
+                  max="10000"
+                  step="100"
+                  value={maxLogLines}
+                  onChange={(e) => handleMaxLogLinesChange(parseInt(e.target.value, 10) || 1000)}
+                  className="w-24 px-2 py-1 text-xs rounded text-right focus:outline-none focus:ring-1"
+                  style={{
+                    backgroundColor: colors.bgSurface,
+                    border: `1px solid ${colors.border}`,
+                    color: colors.textPrimary
+                  }}
+                />
               </div>
 
               {/* Sound Effects Item */}

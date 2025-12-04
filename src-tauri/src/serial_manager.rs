@@ -16,6 +16,7 @@ pub struct SerialManager {
     logs: Arc<Mutex<VecDeque<LogEntry>>>,
     stats: Arc<Mutex<SerialStats>>,
     shutdown_flag: Arc<AtomicBool>,
+    max_log_entries: Arc<Mutex<usize>>,
 }
 
 #[derive(Debug, Default)]
@@ -35,6 +36,7 @@ impl SerialManager {
             logs: Arc::new(Mutex::new(VecDeque::new())),
             stats: Arc::new(Mutex::new(SerialStats::default())),
             shutdown_flag: Arc::new(AtomicBool::new(false)),
+            max_log_entries: Arc::new(Mutex::new(1000)),
         }
     }
 
@@ -120,6 +122,7 @@ impl SerialManager {
         self.shutdown_flag.store(false, Ordering::Relaxed);
         let logs = Arc::clone(&self.logs);
         let stats = Arc::clone(&self.stats);
+        let max_log_entries = Arc::clone(&self.max_log_entries);
         let port_name_clone = port_name.to_string();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
         let mut read_port = port.try_clone()?;
@@ -156,16 +159,17 @@ impl SerialManager {
 
                             if let Ok(mut logs_guard) = logs.lock() {
                                 logs_guard.push_back(log_entry);
-                                if logs_guard.len() > 1000 {
+                                let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+                                while logs_guard.len() > max_entries {
                                     logs_guard.pop_front();
                                 }
                             }
-                            
+
                             // Update received bytes statistics
                             if let Ok(mut stats_guard) = stats.lock() {
                                 stats_guard.bytes_received += data_len as u64;
                             }
-                            
+
                             accumulated_data.clear();
                         }
                         thread::sleep(Duration::from_millis(1));
@@ -185,7 +189,8 @@ impl SerialManager {
 
                             if let Ok(mut logs_guard) = logs.lock() {
                                 logs_guard.push_back(log_entry);
-                                if logs_guard.len() > 1000 {
+                                let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+                                while logs_guard.len() > max_entries {
                                     logs_guard.pop_front();
                                 }
                             }
@@ -366,9 +371,27 @@ impl SerialManager {
     fn add_log(&mut self, log_entry: LogEntry) {
         if let Ok(mut logs) = self.logs.lock() {
             logs.push_back(log_entry);
-            if logs.len() > 1000 {
+            let max_entries = *self.max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+            while logs.len() > max_entries {
                 logs.pop_front();
             }
         }
+    }
+
+    pub fn set_max_log_entries(&self, max_entries: usize) {
+        let max_entries = max_entries.clamp(100, 10000);
+        if let Ok(mut limit) = self.max_log_entries.lock() {
+            *limit = max_entries;
+        }
+        // Trim existing logs if necessary
+        if let Ok(mut logs) = self.logs.lock() {
+            while logs.len() > max_entries {
+                logs.pop_front();
+            }
+        }
+    }
+
+    pub fn get_max_log_entries(&self) -> usize {
+        *self.max_log_entries.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
