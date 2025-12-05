@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Settings } from 'lucide-react';
+import { Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
 import PortSelector from './components/PortSelector';
 import ConfigPanel from './components/ConfigPanel';
 import LogViewer from './components/LogViewer';
-import SendPanel from './components/SendPanel';
+import SendPanel, { SEND_PANEL_MIN_HEIGHTS } from './components/SendPanel';
 import StatusBar from './components/StatusBar';
 import SettingsModal from './components/SettingsModal';
 import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, TextEncoding } from './types';
@@ -13,7 +13,19 @@ import { appendChecksum } from './utils/checksum';
 
 const QUICK_COMMANDS_STORAGE_KEY = 'serial-debug-quick-commands';
 const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
+const STORAGE_KEY_SIDEBAR_WIDTH = 'serialDebug_sidebarWidth';
+const STORAGE_KEY_SIDEBAR_COLLAPSED = 'serialDebug_sidebarCollapsed';
+const STORAGE_KEY_LOG_VIEWER_HEIGHT = 'serialDebug_logViewerHeight';
 const INITIAL_COMMANDS = 20;
+
+// Layout constants
+const DEFAULT_SIDEBAR_WIDTH = 320;
+const MIN_SIDEBAR_WIDTH = 200;
+const COLLAPSED_SIDEBAR_WIDTH = 48;
+const AUTO_COLLAPSE_THRESHOLD = 640;
+const MIN_LOG_VIEWER_HEIGHT = 150;
+const DEFAULT_SEND_PANEL_MIN_HEIGHT = SEND_PANEL_MIN_HEIGHTS.normalText;
+const DEFAULT_LOG_VIEWER_RATIO = 0.65;
 
 const createEmptyCommand = (): QuickCommand => ({
   id: crypto.randomUUID(),
@@ -58,6 +70,33 @@ const getTextEncoding = (): TextEncoding => {
   return (saved === 'utf-8' || saved === 'gbk') ? saved : 'utf-8';
 };
 
+// Layout persistence helpers
+const getSavedSidebarWidth = (): number => {
+  const saved = localStorage.getItem(STORAGE_KEY_SIDEBAR_WIDTH);
+  if (saved) {
+    const width = parseInt(saved, 10);
+    if (!isNaN(width) && width >= MIN_SIDEBAR_WIDTH) {
+      return width;
+    }
+  }
+  return DEFAULT_SIDEBAR_WIDTH;
+};
+
+const getSavedSidebarCollapsed = (): boolean => {
+  return localStorage.getItem(STORAGE_KEY_SIDEBAR_COLLAPSED) === 'true';
+};
+
+const getSavedLogViewerHeight = (): number | null => {
+  const saved = localStorage.getItem(STORAGE_KEY_LOG_VIEWER_HEIGHT);
+  if (saved) {
+    const height = parseInt(saved, 10);
+    if (!isNaN(height) && height >= MIN_LOG_VIEWER_HEIGHT) {
+      return height;
+    }
+  }
+  return null;
+};
+
 function App() {
   const { colors } = useTheme();
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
@@ -90,6 +129,20 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [userHasSelectedPort, setUserHasSelectedPort] = useState(false);
 
+  // Layout state
+  const [sidebarWidth, setSidebarWidth] = useState<number>(getSavedSidebarWidth);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(getSavedSidebarCollapsed);
+  const [logViewerHeight, setLogViewerHeight] = useState<number | null>(getSavedLogViewerHeight);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [isResizingVertical, setIsResizingVertical] = useState(false);
+  const [wasAutoCollapsed, setWasAutoCollapsed] = useState(false);
+  const [sendPanelMinHeight, setSendPanelMinHeight] = useState<number>(DEFAULT_SEND_PANEL_MIN_HEIGHT);
+
+  // Refs for resize handling
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const verticalResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
   // Quick Command Lists state
   const [quickCommandLists, setQuickCommandLists] = useState<QuickCommandList[]>(() => {
     const { lists } = loadQuickCommandsFromStorage();
@@ -117,6 +170,151 @@ function App() {
   useEffect(() => {
     saveQuickCommandsToStorage(quickCommandLists, currentQuickCommandListId);
   }, [quickCommandLists, currentQuickCommandListId]);
+
+  // Persist layout settings to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SIDEBAR_WIDTH, sidebarWidth.toString());
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SIDEBAR_COLLAPSED, sidebarCollapsed.toString());
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (logViewerHeight !== null) {
+      localStorage.setItem(STORAGE_KEY_LOG_VIEWER_HEIGHT, logViewerHeight.toString());
+    }
+  }, [logViewerHeight]);
+
+  // Adjust log viewer height when send panel min height changes
+  useEffect(() => {
+    if (!mainContentRef.current || logViewerHeight === null) return;
+
+    const mainContentRect = mainContentRef.current.getBoundingClientRect();
+    const maxLogViewerHeight = mainContentRect.height - sendPanelMinHeight;
+
+    if (logViewerHeight > maxLogViewerHeight) {
+      setLogViewerHeight(Math.max(MIN_LOG_VIEWER_HEIGHT, maxLogViewerHeight));
+    }
+  }, [sendPanelMinHeight, logViewerHeight]);
+
+  // Window resize handler for auto-collapse
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const windowWidth = window.innerWidth;
+      if (windowWidth < AUTO_COLLAPSE_THRESHOLD && !sidebarCollapsed) {
+        setSidebarCollapsed(true);
+        setWasAutoCollapsed(true);
+      } else if (windowWidth >= AUTO_COLLAPSE_THRESHOLD && wasAutoCollapsed && sidebarCollapsed) {
+        setSidebarCollapsed(false);
+        setWasAutoCollapsed(false);
+      }
+    };
+
+    window.addEventListener('resize', handleWindowResize);
+    // Check on mount
+    handleWindowResize();
+
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [sidebarCollapsed, wasAutoCollapsed]);
+
+  // Sidebar resize handlers
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingSidebar(true);
+    sidebarResizeRef.current = {
+      startX: e.clientX,
+      startWidth: sidebarWidth,
+    };
+  }, [sidebarWidth]);
+
+  const handleSidebarResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizingSidebar || !sidebarResizeRef.current) return;
+
+    const deltaX = e.clientX - sidebarResizeRef.current.startX;
+    const newWidth = sidebarResizeRef.current.startWidth + deltaX;
+    const maxWidth = window.innerWidth * 0.5;
+    const clampedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
+    setSidebarWidth(clampedWidth);
+  }, [isResizingSidebar]);
+
+  const handleSidebarResizeEnd = useCallback(() => {
+    setIsResizingSidebar(false);
+    sidebarResizeRef.current = null;
+  }, []);
+
+  // Vertical resize handlers (between log viewer and send panel)
+  const handleVerticalResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!mainContentRef.current) return;
+
+    setIsResizingVertical(true);
+    const mainContentRect = mainContentRef.current.getBoundingClientRect();
+    const currentLogHeight = logViewerHeight ?? mainContentRect.height * DEFAULT_LOG_VIEWER_RATIO;
+
+    verticalResizeRef.current = {
+      startY: e.clientY,
+      startHeight: currentLogHeight,
+    };
+  }, [logViewerHeight]);
+
+  const handleVerticalResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizingVertical || !verticalResizeRef.current || !mainContentRef.current) return;
+
+    const mainContentRect = mainContentRef.current.getBoundingClientRect();
+    const deltaY = e.clientY - verticalResizeRef.current.startY;
+    const newHeight = verticalResizeRef.current.startHeight + deltaY;
+    const maxHeight = mainContentRect.height - sendPanelMinHeight;
+    const clampedHeight = Math.max(MIN_LOG_VIEWER_HEIGHT, Math.min(maxHeight, newHeight));
+    setLogViewerHeight(clampedHeight);
+  }, [isResizingVertical, sendPanelMinHeight]);
+
+  const handleVerticalResizeEnd = useCallback(() => {
+    setIsResizingVertical(false);
+    verticalResizeRef.current = null;
+  }, []);
+
+  // Global mouse event handlers for resize operations
+  useEffect(() => {
+    if (isResizingSidebar) {
+      document.addEventListener('mousemove', handleSidebarResizeMove);
+      document.addEventListener('mouseup', handleSidebarResizeEnd);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleSidebarResizeMove);
+      document.removeEventListener('mouseup', handleSidebarResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingSidebar, handleSidebarResizeMove, handleSidebarResizeEnd]);
+
+  useEffect(() => {
+    if (isResizingVertical) {
+      document.addEventListener('mousemove', handleVerticalResizeMove);
+      document.addEventListener('mouseup', handleVerticalResizeEnd);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleVerticalResizeMove);
+      document.removeEventListener('mouseup', handleVerticalResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingVertical, handleVerticalResizeMove, handleVerticalResizeEnd]);
+
+  // Toggle sidebar collapse
+  const toggleSidebarCollapse = useCallback(() => {
+    setSidebarCollapsed(prev => !prev);
+    setWasAutoCollapsed(false); // User manually toggled, so reset auto-collapse tracking
+  }, []);
+
+  // Calculate effective sidebar width
+  const effectiveSidebarWidth = sidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : sidebarWidth;
 
   // 使用useCallback确保函数能访问到最新的状态
   const loadPorts = useCallback(async () => {
@@ -402,66 +600,148 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
-        <div className="w-80 flex flex-col relative z-20" style={{ 
-          backgroundColor: colors.bgSidebar, 
-          borderRight: `1px solid ${colors.borderDark}`,
-          backdropFilter: 'blur(20px)'
-        }}>
-          {/* Header */}
-          <div className="p-4 pt-6 flex items-start justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
-            <div>
-              <h1 className="text-base font-bold tracking-wide" style={{ color: colors.textPrimary }}>RSerial Debug Assistant</h1>
-              <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>Professional Tool</p>
+        <div
+          className="flex flex-col relative z-20 transition-[width] duration-200 ease-out"
+          style={{
+            width: effectiveSidebarWidth,
+            minWidth: effectiveSidebarWidth,
+            backgroundColor: colors.bgSidebar,
+            borderRight: `1px solid ${colors.borderDark}`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
+          {/* Collapsed Sidebar View */}
+          {sidebarCollapsed ? (
+            <div className="flex flex-col items-center pt-4">
+              <button
+                onClick={toggleSidebarCollapse}
+                className="p-2 rounded-md transition-colors focus:outline-none"
+                style={{
+                  color: colors.textSecondary,
+                  backgroundColor: 'transparent'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = colors.textPrimary;
+                  e.currentTarget.style.backgroundColor = colors.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = colors.textSecondary;
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                title="Expand Sidebar"
+              >
+                <PanelLeft size={20} />
+              </button>
             </div>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-1.5 rounded-md transition-colors focus:outline-none"
-              style={{ 
-                color: colors.textSecondary,
-                backgroundColor: 'transparent'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = colors.textPrimary;
-                e.currentTarget.style.backgroundColor = colors.bgHover;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = colors.textSecondary;
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-              title="Settings"
-            >
-              <Settings size={16} />
-            </button>
-          </div>
-          
-          {/* Port Selector */}
-          <div className="p-4" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
-            <PortSelector
-              ports={ports}
-              selectedPort={selectedPort}
-              onPortSelect={handlePortSelect}
-              onRefresh={loadPorts}
-              connectionStatus={connectionStatus}
-              onConnect={handleConnect}
-              onDisconnect={handleDisconnect}
-              isLoading={isLoading}
-            />
-          </div>
-          
-          {/* Configuration */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            <ConfigPanel
-              config={config}
-              onChange={setConfig}
-              disabled={connectionStatus.is_connected}
-            />
-          </div>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="p-4 pt-6 flex items-start justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-base font-bold tracking-wide truncate" style={{ color: colors.textPrimary }}>RSerial Debug Assistant</h1>
+                  <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>Professional Tool</p>
+                </div>
+                <div className="flex items-center gap-1 ml-2">
+                  <button
+                    onClick={toggleSidebarCollapse}
+                    className="p-1.5 rounded-md transition-colors focus:outline-none"
+                    style={{
+                      color: colors.textSecondary,
+                      backgroundColor: 'transparent'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = colors.textPrimary;
+                      e.currentTarget.style.backgroundColor = colors.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = colors.textSecondary;
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    title="Collapse Sidebar"
+                  >
+                    <PanelLeftClose size={16} />
+                  </button>
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="p-1.5 rounded-md transition-colors focus:outline-none"
+                    style={{
+                      color: colors.textSecondary,
+                      backgroundColor: 'transparent'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = colors.textPrimary;
+                      e.currentTarget.style.backgroundColor = colors.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = colors.textSecondary;
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    title="Settings"
+                  >
+                    <Settings size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Port Selector */}
+              <div className="p-4" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+                <PortSelector
+                  ports={ports}
+                  selectedPort={selectedPort}
+                  onPortSelect={handlePortSelect}
+                  onRefresh={loadPorts}
+                  connectionStatus={connectionStatus}
+                  onConnect={handleConnect}
+                  onDisconnect={handleDisconnect}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              {/* Configuration */}
+              <div className="flex-1 overflow-y-auto scrollbar-thin">
+                <ConfigPanel
+                  config={config}
+                  onChange={setConfig}
+                  disabled={connectionStatus.is_connected}
+                />
+              </div>
+            </>
+          )}
         </div>
 
+        {/* Sidebar Resize Handle */}
+        {!sidebarCollapsed && (
+          <div
+            className="w-1 hover:w-1 cursor-col-resize relative z-30 group"
+            onMouseDown={handleSidebarResizeStart}
+            style={{
+              backgroundColor: isResizingSidebar ? colors.accent : 'transparent',
+            }}
+          >
+            <div
+              className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-opacity-50 transition-colors"
+              style={{
+                backgroundColor: isResizingSidebar ? colors.accent : 'transparent',
+              }}
+            />
+            <div
+              className="absolute inset-y-0 left-0 w-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ backgroundColor: colors.accent }}
+            />
+          </div>
+        )}
+
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col relative" style={{ backgroundColor: colors.bgMain }}>
+        <div ref={mainContentRef} className="flex-1 flex flex-col relative" style={{ backgroundColor: colors.bgMain }}>
           {/* Log Viewer */}
-          <div className="flex-1 flex flex-col min-h-0">
+          <div
+            className="flex flex-col min-h-0"
+            style={{
+              height: logViewerHeight !== null ? logViewerHeight : undefined,
+              flex: logViewerHeight !== null ? 'none' : `${DEFAULT_LOG_VIEWER_RATIO} 1 0%`,
+              minHeight: MIN_LOG_VIEWER_HEIGHT,
+            }}
+          >
             <LogViewer
               logs={logs}
               onClear={handleClearLogs}
@@ -470,8 +750,33 @@ function App() {
             />
           </div>
 
+          {/* Vertical Resize Handle */}
+          <div
+            className="h-1 cursor-row-resize relative z-30 group"
+            onMouseDown={handleVerticalResizeStart}
+            style={{
+              backgroundColor: isResizingVertical ? colors.accent : colors.borderDark,
+            }}
+          >
+            <div
+              className="absolute inset-x-0 -top-1 -bottom-1 group-hover:bg-opacity-50 transition-colors"
+              style={{
+                backgroundColor: isResizingVertical ? colors.accent : 'transparent',
+              }}
+            />
+            <div
+              className="absolute inset-x-0 top-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ backgroundColor: colors.accent }}
+            />
+          </div>
+
           {/* Send Panel */}
-          <div className="flex-shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] z-20" style={{ borderTop: `1px solid ${colors.borderDark}` }}>
+          <div
+            className="flex-1 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] z-20"
+            style={{
+              minHeight: sendPanelMinHeight,
+            }}
+          >
             <SendPanel
               value={sendText}
               onChange={setSendText}
@@ -487,6 +792,7 @@ function App() {
               onCurrentQuickCommandListChange={setCurrentQuickCommandListId}
               onSendQuickCommand={handleSendQuickCommand}
               onSendSelectedQuickCommands={handleSendSelectedQuickCommands}
+              onMinHeightChange={setSendPanelMinHeight}
             />
           </div>
         </div>

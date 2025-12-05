@@ -147,8 +147,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
       {/* Command List */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto scrollbar-thin"
-        style={{ maxHeight: 'calc(100% - 44px)' }}
+        className="flex-1 overflow-y-auto scrollbar-thin min-h-0"
       >
         {/* Header Row */}
         <div

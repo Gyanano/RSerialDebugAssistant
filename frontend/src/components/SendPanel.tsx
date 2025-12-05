@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Send, Type, Hash, Clock, Play, Pause, Shield, ChevronDown, ChevronUp, List, FileText } from 'lucide-react';
 import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding } from '../types';
 import ToggleSwitch from './ToggleSwitch';
@@ -8,13 +8,78 @@ import { getChecksumLength } from '../utils/checksum';
 
 type SendMode = 'normal' | 'quickCommand';
 
+// Minimum heights for different modes (exported for use in App.tsx)
+export const SEND_PANEL_MIN_HEIGHTS = {
+  normalText: 180,           // Header + textarea (min) + controls
+  normalTextChecksum: 216,   // + checksum expanded row
+  normalHex: 220,            // Header + textarea (min) + controls + quick insert row
+  normalHexChecksum: 256,    // + checksum expanded row
+  quickCommand: 280,         // Header + quick command panel
+};
+
+// Convert text string to hex string (with spaces every 2 characters)
+const textToHex = (text: string): string => {
+  if (!text) return '';
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(text);
+  const hexPairs: string[] = [];
+  for (const byte of bytes) {
+    hexPairs.push(byte.toString(16).toUpperCase().padStart(2, '0'));
+  }
+  return hexPairs.join(' ');
+};
+
+// Convert hex string to text string
+const hexToText = (hex: string): string => {
+  if (!hex) return '';
+  // Remove all spaces and validate
+  const cleanHex = hex.replace(/\s/g, '');
+  if (cleanHex.length === 0) return '';
+
+  // Ensure even number of characters
+  const paddedHex = cleanHex.length % 2 === 0 ? cleanHex : cleanHex + '0';
+
+  const bytes: number[] = [];
+  for (let i = 0; i < paddedHex.length; i += 2) {
+    const byte = parseInt(paddedHex.substr(i, 2), 16);
+    if (!isNaN(byte)) {
+      bytes.push(byte);
+    }
+  }
+
+  try {
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    return decoder.decode(new Uint8Array(bytes));
+  } catch {
+    // If decoding fails, return empty string
+    return '';
+  }
+};
+
+// Format hex input: filter non-hex chars, add spaces every 2 chars
+const formatHexInput = (input: string, previousValue: string): string => {
+  // Remove all spaces first
+  const withoutSpaces = input.replace(/\s/g, '');
+
+  // Filter to only valid hex characters (0-9, A-F, a-f)
+  const hexOnly = withoutSpaces.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+
+  // Add space after every 2 characters
+  const pairs: string[] = [];
+  for (let i = 0; i < hexOnly.length; i += 2) {
+    pairs.push(hexOnly.substr(i, 2));
+  }
+
+  return pairs.join(' ');
+};
+
 interface SendPanelProps {
   value: string;
   onChange: (value: string) => void;
   format: DataFormat;
   onFormatChange: (format: DataFormat) => void;
   onSend: () => void;
-  isConnected: boolean;  // Renamed from 'disabled' to be clearer
+  isConnected: boolean;
   checksumConfig: ChecksumConfig;
   onChecksumConfigChange: (config: ChecksumConfig) => void;
   // Quick Command props
@@ -24,6 +89,8 @@ interface SendPanelProps {
   onCurrentQuickCommandListChange: (listId: string) => void;
   onSendQuickCommand: (content: string, isHex: boolean, lineEnding: LineEnding) => void;
   onSendSelectedQuickCommands: (commands: QuickCommand[]) => void;
+  // Callback to report current minimum height requirement
+  onMinHeightChange?: (minHeight: number) => void;
 }
 
 const SendPanel: React.FC<SendPanelProps> = ({
@@ -41,6 +108,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
   onCurrentQuickCommandListChange,
   onSendQuickCommand,
   onSendSelectedQuickCommands,
+  onMinHeightChange,
 }) => {
   const { colors } = useTheme();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -72,6 +140,36 @@ const SendPanel: React.FC<SendPanelProps> = ({
       onSend();
     }
   };
+
+  // Handle format change with automatic conversion
+  const handleFormatChange = useCallback((newFormat: DataFormat) => {
+    if (newFormat === format) return;
+
+    if (newFormat === 'Hex') {
+      // Convert text to hex
+      const hexValue = textToHex(value);
+      onChange(hexValue);
+    } else {
+      // Convert hex to text
+      const textValue = hexToText(value);
+      onChange(textValue);
+    }
+    onFormatChange(newFormat);
+  }, [format, value, onChange, onFormatChange]);
+
+  // Handle input change with hex validation and auto-spacing
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+
+    if (format === 'Hex') {
+      // Format and validate hex input
+      const formattedHex = formatHexInput(newValue, value);
+      onChange(formattedHex);
+    } else {
+      // Text mode: no restrictions
+      onChange(newValue);
+    }
+  }, [format, value, onChange]);
 
   const handleScheduledToggle = () => {
     const newEnabledState = !isScheduledEnabled;
@@ -128,6 +226,25 @@ const SendPanel: React.FC<SendPanelProps> = ({
     }
   }, [isConnected, value]);
 
+  // Report minimum height changes to parent
+  useEffect(() => {
+    if (!onMinHeightChange) return;
+
+    let minHeight: number;
+    if (sendMode === 'quickCommand') {
+      minHeight = SEND_PANEL_MIN_HEIGHTS.quickCommand;
+    } else if (format === 'Hex') {
+      minHeight = checksumConfig.type !== 'None' && isChecksumExpanded
+        ? SEND_PANEL_MIN_HEIGHTS.normalHexChecksum
+        : SEND_PANEL_MIN_HEIGHTS.normalHex;
+    } else {
+      minHeight = checksumConfig.type !== 'None' && isChecksumExpanded
+        ? SEND_PANEL_MIN_HEIGHTS.normalTextChecksum
+        : SEND_PANEL_MIN_HEIGHTS.normalText;
+    }
+    onMinHeightChange(minHeight);
+  }, [sendMode, format, checksumConfig.type, isChecksumExpanded, onMinHeightChange]);
+
   const getPlaceholderText = () => {
     if (format === 'Text') {
       return 'Type your message here... (Ctrl+Enter to send)';
@@ -170,7 +287,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
   ];
 
   return (
-    <div style={{ backgroundColor: colors.bgSidebar }}>
+    <div className="h-full flex flex-col" style={{ backgroundColor: colors.bgSidebar }}>
       {/* Send Header with Mode Toggle */}
       <div
         className="px-4 py-2 flex justify-between items-center"
@@ -258,7 +375,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
               style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
             >
               <button
-                onClick={() => onFormatChange('Text')}
+                onClick={() => handleFormatChange('Text')}
                 className="px-3 py-0.5 rounded-[4px] transition-all"
                 style={{
                   backgroundColor: format === 'Text' ? colors.accent : 'transparent',
@@ -270,7 +387,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 Text
               </button>
               <button
-                onClick={() => onFormatChange('Hex')}
+                onClick={() => handleFormatChange('Hex')}
                 className="px-3 py-0.5 rounded-[4px] transition-all"
                 style={{
                   backgroundColor: format === 'Hex' ? colors.accent : 'transparent',
@@ -337,118 +454,127 @@ const SendPanel: React.FC<SendPanelProps> = ({
           )}
 
           {/* Normal Send Content */}
-          <div className="flex p-3 space-x-3">
-            {/* Text Input */}
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={getPlaceholderText()}
-                className="w-full h-24 resize-none rounded-[6px] p-3 text-sm font-mono focus:outline-none focus:ring-2 shadow-inner"
-                style={{
-                  backgroundColor: colors.bgMain,
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textPrimary,
-                  '--tw-ring-color': `${colors.accent}80`
-                } as React.CSSProperties}
-                disabled={!isConnected}
-              />
-
-              <div className="flex items-center justify-between mt-2 text-xs" style={{ color: colors.textTertiary }}>
-                <div className="flex items-center space-x-4">
-                  {format === 'Text' && (
-                    <span>Characters: {value.length}</span>
-                  )}
-                  <span>Bytes: {getByteCount()}</span>
-                  {checksumConfig.type !== 'None' && (
-                    <span style={{ color: colors.accent }}>
-                      +{getChecksumLength(checksumConfig.type)} ({checksumConfig.type}) = {getTotalByteCount()}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Controls */}
-            <div className="w-40 flex flex-col space-y-2">
-              <button
-                onClick={handleSendClick}
-                disabled={isNormalSendDisabled}
-                className="w-full h-9 font-medium rounded-[6px] shadow-macos-btn transition-all active:scale-[0.98] flex items-center justify-center space-x-2"
-                style={{
-                  backgroundColor: !isNormalSendDisabled ? colors.accent : colors.bgSurface,
-                  color: !isNormalSendDisabled ? '#ffffff' : colors.textTertiary,
-                  opacity: isNormalSendDisabled ? 0.5 : 1,
-                  cursor: isNormalSendDisabled ? 'not-allowed' : 'pointer'
-                }}
-              >
-                <span className="text-sm">{isScheduledEnabled ? 'Scheduled Active' : 'Send'}</span>
-              </button>
-
-              <div
-                className="rounded-[6px] p-2"
-                style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>Cycle (ms)</span>
-                  <ToggleSwitch
-                    checked={isScheduledEnabled}
-                    onChange={handleScheduledToggle}
-                    disabled={!isConnected}
-                    title={isScheduledEnabled ? 'Stop scheduled sending' : 'Start scheduled sending'}
-                  />
-                </div>
-                <input
-                  type="number"
-                  value={scheduledInterval}
-                  onChange={handleIntervalChange}
-                  className="w-full rounded px-2 py-1 text-xs text-right focus:outline-none"
+          <div className="flex-1 flex flex-col p-3 min-h-0">
+            {/* Main row: Textarea + Controls */}
+            <div className="flex-1 flex space-x-3 min-h-0">
+              {/* Text Input */}
+              <div className="flex-1 flex flex-col min-h-0">
+                <textarea
+                  ref={textareaRef}
+                  value={value}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder={getPlaceholderText()}
+                  className="flex-1 w-full min-h-[60px] resize-none rounded-[6px] p-3 text-sm font-mono focus:outline-none focus:ring-2 shadow-inner"
                   style={{
                     backgroundColor: colors.bgMain,
                     border: `1px solid ${colors.border}`,
-                    color: colors.textSecondary
-                  }}
-                  min="100"
-                  max="60000"
-                  step="100"
-                  disabled={!isConnected || isScheduledRunning}
-                  title="Send interval in milliseconds"
+                    color: colors.textPrimary,
+                    '--tw-ring-color': `${colors.accent}80`
+                  } as React.CSSProperties}
+                  disabled={!isConnected}
                 />
-              </div>
 
-              {format === 'Hex' && (
-                <div>
-                  <h4 className="text-xs font-medium mb-2" style={{ color: colors.textTertiary }}>Quick Insert:</h4>
-                  <div className="grid grid-cols-2 gap-1">
-                    {commonHexValues.map((item) => (
-                      <button
-                        key={item.value}
-                        onClick={() => insertCommonHex(item.value)}
-                        className="text-xs px-2 py-1 rounded-[4px] font-mono transition-colors"
-                        style={{
-                          backgroundColor: colors.buttonSecondaryBg,
-                          border: `1px solid ${colors.borderLight}`,
-                          color: colors.textSecondary
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
-                        disabled={!isConnected}
-                        title={item.description}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
+                <div className="flex items-center justify-between mt-2 text-xs flex-shrink-0" style={{ color: colors.textTertiary }}>
+                  <div className="flex items-center space-x-4">
+                    {format === 'Text' && (
+                      <span>Characters: {value.length}</span>
+                    )}
+                    <span>Bytes: {getByteCount()}</span>
+                    {checksumConfig.type !== 'None' && (
+                      <span style={{ color: colors.accent }}>
+                        +{getChecksumLength(checksumConfig.type)} ({checksumConfig.type}) = {getTotalByteCount()}
+                      </span>
+                    )}
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Controls */}
+              <div className="w-40 flex flex-col space-y-2 flex-shrink-0">
+                <button
+                  onClick={handleSendClick}
+                  disabled={isNormalSendDisabled}
+                  className="w-full h-9 font-medium rounded-[6px] shadow-macos-btn transition-all active:scale-[0.98] flex items-center justify-center space-x-2"
+                  style={{
+                    backgroundColor: !isNormalSendDisabled ? colors.accent : colors.bgSurface,
+                    color: !isNormalSendDisabled ? '#ffffff' : colors.textTertiary,
+                    opacity: isNormalSendDisabled ? 0.5 : 1,
+                    cursor: isNormalSendDisabled ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <span className="text-sm">{isScheduledEnabled ? 'Scheduled Active' : 'Send'}</span>
+                </button>
+
+                <div
+                  className="rounded-[6px] p-2"
+                  style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>Cycle (ms)</span>
+                    <ToggleSwitch
+                      checked={isScheduledEnabled}
+                      onChange={handleScheduledToggle}
+                      disabled={!isConnected}
+                      title={isScheduledEnabled ? 'Stop scheduled sending' : 'Start scheduled sending'}
+                    />
+                  </div>
+                  <input
+                    type="number"
+                    value={scheduledInterval}
+                    onChange={handleIntervalChange}
+                    className="w-full rounded px-2 py-1 text-xs text-right focus:outline-none"
+                    style={{
+                      backgroundColor: colors.bgMain,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.textSecondary
+                    }}
+                    min="100"
+                    max="60000"
+                    step="100"
+                    disabled={!isConnected || isScheduledRunning}
+                    title="Send interval in milliseconds"
+                  />
+                </div>
+              </div>
             </div>
+
+            {/* Quick Insert Row (Hex mode only) */}
+            {format === 'Hex' && (
+              <div
+                className="mt-3 pt-3 flex items-center space-x-3 flex-shrink-0"
+                style={{ borderTop: `1px solid ${colors.borderLight}` }}
+              >
+                <span className="text-xs font-medium whitespace-nowrap" style={{ color: colors.textTertiary }}>
+                  Quick Insert:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {commonHexValues.map((item) => (
+                    <button
+                      key={item.value}
+                      onClick={() => insertCommonHex(item.value)}
+                      className="text-xs px-2.5 py-1 rounded-[4px] font-mono transition-colors"
+                      style={{
+                        backgroundColor: colors.buttonSecondaryBg,
+                        border: `1px solid ${colors.borderLight}`,
+                        color: colors.textSecondary
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
+                      disabled={!isConnected}
+                      title={item.description}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : (
         /* Quick Command Mode */
-        <div style={{ height: '240px' }}>
+        <div className="flex-1 min-h-0">
           <QuickCommandPanel
             lists={quickCommandLists}
             currentListId={currentQuickCommandListId}
