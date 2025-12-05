@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Trash2, Download, Terminal, ChevronDown } from 'lucide-react';
-import { LogEntry } from '../types';
+import { LogEntry, TextEncoding, SpecialCharConfig } from '../types';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -8,6 +8,18 @@ type ReceiveDisplayFormat = 'Txt' | 'Hex';
 
 const STORAGE_KEY_RECEIVE_FORMAT = 'serialDebug_receiveFormat';
 const STORAGE_KEY_SHOW_TIMESTAMPS = 'serialDebug_showTimestamps';
+const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
+const STORAGE_KEY_SPECIAL_CHAR_CONFIG = 'serialDebug_specialCharConfig';
+
+const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
+  enabled: true,
+  convertLF: true,
+  convertCR: true,
+  convertTab: true,
+  convertNull: true,
+  convertEsc: true,
+  convertSpaces: true,
+};
 
 interface LogViewerProps {
   logs: LogEntry[];
@@ -31,6 +43,21 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     const saved = localStorage.getItem(STORAGE_KEY_SHOW_TIMESTAMPS);
     return saved === null ? true : saved === 'true';
   });
+  const [textEncoding, setTextEncoding] = useState<TextEncoding>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_TEXT_ENCODING);
+    return (saved === 'utf-8' || saved === 'gbk') ? saved : 'utf-8';
+  });
+  const [specialCharConfig, setSpecialCharConfig] = useState<SpecialCharConfig>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_SPECIAL_CHAR_CONFIG);
+    if (saved) {
+      try {
+        return { ...DEFAULT_SPECIAL_CHAR_CONFIG, ...JSON.parse(saved) };
+      } catch {
+        return DEFAULT_SPECIAL_CHAR_CONFIG;
+      }
+    }
+    return DEFAULT_SPECIAL_CHAR_CONFIG;
+  });
   const [formatDropdownOpen, setFormatDropdownOpen] = useState(false);
   const formatDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -43,6 +70,33 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SHOW_TIMESTAMPS, String(showTimestamps));
   }, [showTimestamps]);
+
+  // Listen for settings changes from Settings modal
+  useEffect(() => {
+    const handleStorageChange = () => {
+      // Text encoding
+      const savedEncoding = localStorage.getItem(STORAGE_KEY_TEXT_ENCODING);
+      if (savedEncoding === 'utf-8' || savedEncoding === 'gbk') {
+        setTextEncoding(savedEncoding);
+      }
+      // Special char config
+      const savedSpecialCharConfig = localStorage.getItem(STORAGE_KEY_SPECIAL_CHAR_CONFIG);
+      if (savedSpecialCharConfig) {
+        try {
+          setSpecialCharConfig({ ...DEFAULT_SPECIAL_CHAR_CONFIG, ...JSON.parse(savedSpecialCharConfig) });
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    // Also check periodically for same-window changes
+    const interval = setInterval(handleStorageChange, 500);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -88,44 +142,37 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   const formatDataAsText = (data: number[]) => {
     try {
       const bytes = new Uint8Array(data);
-      const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      // Use fatal: true to strictly enforce encoding - throws on invalid sequences
+      const decoder = new TextDecoder(textEncoding, { fatal: true });
+      let text = decoder.decode(bytes);
 
-      // Check if the data contains mostly printable characters (including UTF-8)
-      const printableChars = text.split('').filter(char => {
-        const code = char.charCodeAt(0);
-        // Include more character ranges: ASCII printable, Latin-1 supplement, and most Unicode characters
-        return (code >= 32 && code <= 126) || // ASCII printable
-               (code >= 160 && code <= 255) || // Latin-1 supplement
-               (code >= 256 && code < 0xFFFE) || // Most Unicode characters
-               code === 9 || code === 10 || code === 13; // Tab, LF, CR
-      }).length;
-
-      // Check for replacement characters (indicating invalid UTF-8)
-      const hasReplacementChars = text.includes('\uFFFD');
-
-      if (!hasReplacementChars && printableChars / text.length > 0.7) {
-        // Valid UTF-8 text, show as text with visible control characters
-        return text
-          .replace(/\r\n/g, '␍␊')    // CRLF
-          .replace(/\n/g, '␊')       // LF (Line Feed)
-          .replace(/\r/g, '␍')       // CR (Carriage Return)
-          .replace(/\t/g, '␉')       // TAB
-          .replace(/\0/g, '␀')       // NULL
-          .replace(/\x1B/g, '␛')     // ESC
+      // Apply control character visualization based on settings
+      if (specialCharConfig.enabled) {
+        if (specialCharConfig.convertLF) {
+          text = text.replace(/\n/g, '␊');
+        }
+        if (specialCharConfig.convertCR) {
+          text = text.replace(/\r/g, '␍');
+        }
+        if (specialCharConfig.convertTab) {
+          text = text.replace(/\t/g, '␉');
+        }
+        if (specialCharConfig.convertNull) {
+          text = text.replace(/\0/g, '␀');
+        }
+        if (specialCharConfig.convertEsc) {
+          text = text.replace(/\x1B/g, '␛');
+        }
+        if (specialCharConfig.convertSpaces) {
           // Only show spaces at end of lines or multiple consecutive spaces
-          .replace(/\x20+$/gm, (spaces) => '␣'.repeat(spaces.length))  // Trailing spaces
-          .replace(/\x20{2,}/g, (spaces) => '␣'.repeat(spaces.length)) // Multiple spaces
-          .replace(/[\x01-\x1F\x7F]/g, (char) => {
-            // Other control characters as Unicode symbols
-            const code = char.charCodeAt(0);
-            return String.fromCharCode(0x2400 + code); // Control Pictures block
-          });
-      } else {
-        // Contains non-printable or invalid UTF-8, show as hex
-        return formatDataAsHex(data);
+          text = text.replace(/\x20+$/gm, (spaces) => '␣'.repeat(spaces.length));  // Trailing spaces
+          text = text.replace(/\x20{2,}/g, (spaces) => '␣'.repeat(spaces.length)); // Multiple spaces
+        }
       }
+
+      return text;
     } catch {
-      // Fallback to hex if decoding fails
+      // Decoding failed with the selected encoding - show as hex
       return formatDataAsHex(data);
     }
   };
@@ -179,7 +226,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
               }}
               title="Receive data display format"
             >
-              <span>RX:</span>
+              <span>Format:</span>
               <span style={{ color: colors.textPrimary }}>{receiveFormat}</span>
               <ChevronDown size={12} />
             </button>

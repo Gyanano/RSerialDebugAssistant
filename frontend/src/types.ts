@@ -24,6 +24,7 @@ export type StopBits = 'One' | 'OnePointFive' | 'Two';
 export type FlowControl = 'None' | 'Software' | 'Hardware';
 export type DataFormat = 'Text' | 'Hex';
 export type Direction = 'Sent' | 'Received';
+export type TextEncoding = 'utf-8' | 'gbk';
 
 // Checksum types
 export type ChecksumType = 'None' | 'XOR' | 'ADD8' | 'CRC8' | 'CRC16' | 'CCITT-CRC16';
@@ -67,4 +68,15 @@ export interface QuickCommandList {
   id: string;
   name: string;
   commands: QuickCommand[];
+}
+
+// Special character conversion settings
+export interface SpecialCharConfig {
+  enabled: boolean;
+  convertLF: boolean;     // \n -> ␊
+  convertCR: boolean;     // \r -> ␍
+  convertTab: boolean;    // \t -> ␉
+  convertNull: boolean;   // \0 -> ␀
+  convertEsc: boolean;    // ESC -> ␛
+  convertSpaces: boolean; // trailing/multiple spaces -> ␣
 }

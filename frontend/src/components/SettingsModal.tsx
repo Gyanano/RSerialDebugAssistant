@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { X, Folder, Moon, Sun } from 'lucide-react';
+import { X, Folder, Moon, Sun, ChevronDown, ChevronUp } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
+import { TextEncoding, SpecialCharConfig } from '../types';
+
+const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
+  enabled: true,
+  convertLF: true,
+  convertCR: true,
+  convertTab: true,
+  convertNull: true,
+  convertEsc: true,
+  convertSpaces: true,
+};
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -14,6 +25,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [logPath, setLogPath] = useState('~/Documents/SerialLogs');
   const [soundEffects, setSoundEffects] = useState(false);
   const [maxLogLines, setMaxLogLines] = useState(1000);
+  const [textEncoding, setTextEncoding] = useState<TextEncoding>('utf-8');
+  const [specialCharConfig, setSpecialCharConfig] = useState<SpecialCharConfig>(DEFAULT_SPECIAL_CHAR_CONFIG);
+  const [specialCharExpanded, setSpecialCharExpanded] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
 
   // Load saved settings from localStorage on component mount
@@ -21,6 +35,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     const savedLogPath = localStorage.getItem('serialDebug_logPath');
     const savedSoundEffects = localStorage.getItem('serialDebug_soundEffects');
     const savedMaxLogLines = localStorage.getItem('serialDebug_maxLogLines');
+    const savedTextEncoding = localStorage.getItem('serialDebug_textEncoding');
+    const savedSpecialCharConfig = localStorage.getItem('serialDebug_specialCharConfig');
 
     if (savedLogPath) {
       setLogPath(savedLogPath);
@@ -30,6 +46,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     }
     if (savedMaxLogLines) {
       setMaxLogLines(parseInt(savedMaxLogLines, 10));
+    }
+    if (savedTextEncoding === 'utf-8' || savedTextEncoding === 'gbk') {
+      setTextEncoding(savedTextEncoding);
+    }
+    if (savedSpecialCharConfig) {
+      try {
+        const parsed = JSON.parse(savedSpecialCharConfig);
+        setSpecialCharConfig({ ...DEFAULT_SPECIAL_CHAR_CONFIG, ...parsed });
+      } catch {
+        // Use default if parsing fails
+      }
     }
   }, []);
 
@@ -55,6 +82,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     } catch (error) {
       console.error('Error setting log limit:', error);
     }
+  };
+
+  // Save text encoding to localStorage
+  const handleTextEncodingChange = (encoding: TextEncoding) => {
+    setTextEncoding(encoding);
+    localStorage.setItem('serialDebug_textEncoding', encoding);
+  };
+
+  // Save special character config to localStorage
+  const handleSpecialCharConfigChange = (updates: Partial<SpecialCharConfig>) => {
+    const newConfig = { ...specialCharConfig, ...updates };
+    setSpecialCharConfig(newConfig);
+    localStorage.setItem('serialDebug_specialCharConfig', JSON.stringify(newConfig));
   };
 
   // Handle folder selection with Tauri dialog
@@ -101,7 +141,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     >
       {/* Modal Window */}
       <div
-        className="w-[500px] rounded-xl shadow-macos-window flex flex-col overflow-hidden transform transition-all duration-200"
+        className="w-[500px] max-h-[80vh] rounded-xl shadow-macos-window flex flex-col overflow-hidden transform transition-all duration-200"
         style={{
           backgroundColor: colors.bgSidebar,
           borderColor: colors.border,
@@ -226,13 +266,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               >
                 <div className="flex flex-col">
                   <span className="text-sm" style={{ color: colors.textPrimary }}>Maximum Log Lines</span>
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>Number of log entries to display (100-10000)</span>
+                  <span className="text-xs" style={{ color: colors.textTertiary }}>Number of log entries to display (1000-100000)</span>
                 </div>
                 <input
                   type="number"
-                  min="100"
-                  max="10000"
-                  step="100"
+                  min="1000"
+                  max="100000"
+                  step="1000"
                   value={maxLogLines}
                   onChange={(e) => handleMaxLogLinesChange(parseInt(e.target.value, 10) || 1000)}
                   className="w-24 px-2 py-1 text-xs rounded text-right focus:outline-none focus:ring-1"
@@ -242,6 +282,97 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     color: colors.textPrimary
                   }}
                 />
+              </div>
+
+              {/* Text Encoding Item */}
+              <div
+                className="p-3 flex items-center justify-between"
+                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm" style={{ color: colors.textPrimary }}>Text Encoding</span>
+                  <span className="text-xs" style={{ color: colors.textTertiary }}>Encoding for sending and receiving text data</span>
+                </div>
+                <select
+                  value={textEncoding}
+                  onChange={(e) => handleTextEncodingChange(e.target.value as TextEncoding)}
+                  className="w-24 px-2 py-1 text-xs rounded focus:outline-none focus:ring-1"
+                  style={{
+                    backgroundColor: colors.bgSurface,
+                    border: `1px solid ${colors.border}`,
+                    color: colors.textPrimary
+                  }}
+                >
+                  <option value="utf-8">UTF-8</option>
+                  <option value="gbk">GBK</option>
+                </select>
+              </div>
+
+              {/* Special Character Conversion Item */}
+              <div
+                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+              >
+                <div className="p-3 flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>Convert Special Characters</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>Display control characters as visible symbols</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <ToggleSwitch
+                      checked={specialCharConfig.enabled}
+                      onChange={(enabled) => handleSpecialCharConfigChange({ enabled })}
+                      title="Toggle special character conversion"
+                    />
+                    {specialCharConfig.enabled && (
+                      <button
+                        onClick={() => setSpecialCharExpanded(!specialCharExpanded)}
+                        className="p-1 rounded transition-colors"
+                        style={{ color: colors.textSecondary }}
+                        title={specialCharExpanded ? 'Collapse options' : 'Expand options'}
+                      >
+                        {specialCharExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Sub-options for special character conversion */}
+                {specialCharConfig.enabled && specialCharExpanded && (
+                  <div
+
+                    className="px-3 pt-2 pb-3 grid grid-cols-2 gap-2"
+                    style={{ backgroundColor: colors.bgSurface }}
+                  >
+                    {[
+                      { key: 'convertLF', label: '\\n → ␊', desc: 'Line Feed' },
+                      { key: 'convertCR', label: '\\r → ␍', desc: 'Carriage Return' },
+                      { key: 'convertTab', label: '\\t → ␉', desc: 'Tab' },
+                      { key: 'convertNull', label: '\\0 → ␀', desc: 'Null' },
+                      { key: 'convertEsc', label: 'ESC → ␛', desc: 'Escape' },
+                      { key: 'convertSpaces', label: 'Spaces → ␣', desc: 'Trailing/Multiple' },
+                    ].map(({ key, label, desc }) => (
+                      <label
+                        key={key}
+                        className="flex items-center space-x-2 p-1.5 rounded cursor-pointer transition-colors"
+                        style={{ backgroundColor: 'transparent' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.bgHover}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={specialCharConfig[key as keyof SpecialCharConfig] as boolean}
+                          onChange={(e) => handleSpecialCharConfigChange({ [key]: e.target.checked })}
+                          className="w-3.5 h-3.5 rounded"
+                          style={{ accentColor: colors.accent }}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-xs font-mono" style={{ color: colors.textPrimary }}>{label}</span>
+                          <span className="text-[10px]" style={{ color: colors.textTertiary }}>{desc}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Sound Effects Item */}
@@ -267,8 +398,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               style={{ backgroundColor: colors.bgMain, border: `1px solid ${colors.borderLight}` }}
             >
               <div>
-                <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>Serial Debug Assistant</div>
-                <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>Version 1.0.1 (Build 20241129)</div>
+                <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>RSerial Debug Assistant</div>
+                <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>Version 1.2.0 (Build 20251206)</div>
               </div>
               <button
                 onClick={handleCheckUpdates}

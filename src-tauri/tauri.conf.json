@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "Serial Debug Assistant",
+  "productName": "RSerial Debug Assistant",
   "version": "1.0.1",
   "identifier": "Gyanano",
   "build": {
@@ -10,7 +10,7 @@
   "app": {
     "windows": [
       {
-        "title": "Serial Debug Assistant",
+        "title": "RSerial Debug Assistant",
         "width": 1024,
         "height": 720,
         "minWidth": 840,

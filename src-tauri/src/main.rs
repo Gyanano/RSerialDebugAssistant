@@ -56,17 +56,33 @@ async fn send_data(
     state: State<'_, AppState>,
     data: String,
     format: DataFormat,
+    encoding: Option<TextEncoding>,
 ) -> Result<(), String> {
+    let text_encoding = encoding.unwrap_or_default();
+
     // Process data conversion in a separate task to avoid blocking UI
     let bytes = tokio::task::spawn_blocking(move || {
         match format {
-            DataFormat::Text => Ok(data.into_bytes()),
+            DataFormat::Text => {
+                // Encode text using the specified encoding
+                match text_encoding {
+                    TextEncoding::Utf8 => Ok(data.into_bytes()),
+                    TextEncoding::Gbk => {
+                        let (encoded, _, had_errors) = encoding_rs::GBK.encode(&data);
+                        if had_errors {
+                            // If encoding fails for some characters, still send what we can
+                            log::warn!("Some characters could not be encoded to GBK");
+                        }
+                        Ok(encoded.into_owned())
+                    }
+                }
+            }
             DataFormat::Hex => {
                 let cleaned = data.replace(" ", "").replace("\n", "");
                 if cleaned.len() % 2 != 0 {
                     return Err("Hex string must have even number of characters".to_string());
                 }
-                
+
                 let mut bytes = Vec::new();
                 for i in (0..cleaned.len()).step_by(2) {
                     match u8::from_str_radix(&cleaned[i..i+2], 16) {
@@ -78,7 +94,7 @@ async fn send_data(
             }
         }
     }).await.map_err(|e| e.to_string())??;
-    
+
     let mut manager = state.serial_manager.lock().unwrap();
     manager.send_data(bytes)
         .map_err(|e| e.to_string())

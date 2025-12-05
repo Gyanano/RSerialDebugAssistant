@@ -328,7 +328,7 @@ impl SerialManager {
 
         match format {
             ExportFormat::Txt => {
-                writeln!(file, "Serial Debug Assistant - Log Export")?;
+                writeln!(file, "RSerial Debug Assistant - Log Export")?;
                 writeln!(file, "Generated: {}", Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))?;
                 writeln!(file, "{}", "=".repeat(60))?;
                 writeln!(file)?;

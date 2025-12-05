@@ -73,6 +73,15 @@ pub enum DataFormat {
     Hex,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub enum TextEncoding {
+    #[default]
+    #[serde(rename = "utf-8")]
+    Utf8,
+    #[serde(rename = "gbk")]
+    Gbk,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub id: Option<i64>,

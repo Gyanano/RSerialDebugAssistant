@@ -1,4 +1,4 @@
-# Serial Debug Assistant
+# RSerial Debug Assistant
 
 <div align="center">
 
@@ -19,7 +19,7 @@
 
 ## About
 
-Serial Debug Assistant is a professional-grade serial communication tool that combines the power of **Rust** with the beauty of modern **React** UI. Whether you're debugging embedded systems, testing Arduino projects, or working with any serial device, this tool provides a seamless experience across Windows, macOS, and Linux.
+RSerial Debug Assistant is a professional-grade serial communication tool that combines the power of **Rust** with the beauty of modern **React** UI. Whether you're debugging embedded systems, testing Arduino projects, or working with any serial device, this tool provides a seamless experience across Windows, macOS, and Linux.
 
 ## Features
 
@@ -107,7 +107,7 @@ cargo tauri dev
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Serial Debug Assistant                          [Settings]  │
+│ RSerial Debug Assistant                         [Settings]  │
 ├───────────────┬─────────────────────────────────────────────┤
 │ Port Selector │                                             │
 │               │         Log Viewer                          │

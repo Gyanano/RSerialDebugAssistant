@@ -7,11 +7,12 @@ import LogViewer from './components/LogViewer';
 import SendPanel from './components/SendPanel';
 import StatusBar from './components/StatusBar';
 import SettingsModal from './components/SettingsModal';
-import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding } from './types';
+import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, TextEncoding } from './types';
 import { useTheme } from './contexts/ThemeContext';
 import { appendChecksum } from './utils/checksum';
 
 const QUICK_COMMANDS_STORAGE_KEY = 'serial-debug-quick-commands';
+const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
 const INITIAL_COMMANDS = 20;
 
 const createEmptyCommand = (): QuickCommand => ({
@@ -50,6 +51,11 @@ const saveQuickCommandsToStorage = (lists: QuickCommandList[], currentListId: st
   } catch (e) {
     console.error('Failed to save quick commands to storage:', e);
   }
+};
+
+const getTextEncoding = (): TextEncoding => {
+  const saved = localStorage.getItem(STORAGE_KEY_TEXT_ENCODING);
+  return (saved === 'utf-8' || saved === 'gbk') ? saved : 'utf-8';
 };
 
 function App() {
@@ -236,13 +242,15 @@ function App() {
     if (!sendText.trim() || !connectionStatus.is_connected) return;
 
     try {
-      let dataToSend = sendText;
+      const textEncoding = getTextEncoding();
 
       // If checksum is enabled, we need to calculate and append it
       if (checksumConfig.type !== 'None') {
         // Convert input to bytes first
         let bytes: Uint8Array;
         if (sendFormat === 'Text') {
+          // For checksum calculation with text, we use UTF-8 encoding in frontend
+          // The actual encoding conversion happens in backend
           bytes = new TextEncoder().encode(sendText);
         } else {
           // Parse hex string
@@ -267,20 +275,21 @@ function App() {
         const bytesWithChecksum = appendChecksum(bytes, checksumConfig);
 
         // Convert back to hex string for sending (always send as hex when checksum is added)
-        dataToSend = Array.from(bytesWithChecksum)
+        const dataToSend = Array.from(bytesWithChecksum)
           .map(b => b.toString(16).padStart(2, '0').toUpperCase())
           .join(' ');
 
-        // Send as hex format when checksum is appended
+        // Send as hex format when checksum is appended (encoding not needed for hex)
         await invoke('send_data', {
           data: dataToSend,
           format: 'Hex',
         });
       } else {
-        // No checksum, send as-is
+        // No checksum, send as-is with encoding
         await invoke('send_data', {
           data: sendText,
           format: sendFormat,
+          encoding: sendFormat === 'Text' ? textEncoding : undefined,
         });
       }
 
@@ -345,10 +354,12 @@ function App() {
     try {
       const dataToSend = appendLineEnding(content, lineEnding, isHex);
       const format: DataFormat = isHex ? 'Hex' : 'Text';
+      const textEncoding = getTextEncoding();
 
       await invoke('send_data', {
         data: dataToSend,
         format: format,
+        encoding: !isHex ? textEncoding : undefined,
       });
 
       await updateLogs();
@@ -363,6 +374,8 @@ function App() {
     if (commands.length === 0 || !connectionStatus.is_connected) return;
 
     try {
+      const textEncoding = getTextEncoding();
+
       for (const command of commands) {
         const dataToSend = appendLineEnding(command.content, command.lineEnding, command.isHex);
         const format: DataFormat = command.isHex ? 'Hex' : 'Text';
@@ -370,6 +383,7 @@ function App() {
         await invoke('send_data', {
           data: dataToSend,
           format: format,
+          encoding: !command.isHex ? textEncoding : undefined,
         });
 
         // Small delay between commands to ensure proper sequencing
@@ -396,7 +410,7 @@ function App() {
           {/* Header */}
           <div className="p-4 pt-6 flex items-start justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
             <div>
-              <h1 className="text-base font-bold tracking-wide" style={{ color: colors.textPrimary }}>Serial Debug Assistant</h1>
+              <h1 className="text-base font-bold tracking-wide" style={{ color: colors.textPrimary }}>RSerial Debug Assistant</h1>
               <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>Professional Tool</p>
             </div>
             <button
