@@ -1,8 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Trash2, Download, Terminal } from 'lucide-react';
+import { Trash2, Download, Terminal, ChevronDown } from 'lucide-react';
 import { LogEntry } from '../types';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
+
+type ReceiveDisplayFormat = 'Txt' | 'Hex';
+
+const STORAGE_KEY_RECEIVE_FORMAT = 'serialDebug_receiveFormat';
+const STORAGE_KEY_SHOW_TIMESTAMPS = 'serialDebug_showTimestamps';
 
 interface LogViewerProps {
   logs: LogEntry[];
@@ -17,25 +22,58 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const previousLogsLengthRef = useRef(logs.length);
 
+  // State for receive format and timestamp display
+  const [receiveFormat, setReceiveFormat] = useState<ReceiveDisplayFormat>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_RECEIVE_FORMAT);
+    return (saved === 'Hex' || saved === 'Txt') ? saved : 'Txt';
+  });
+  const [showTimestamps, setShowTimestamps] = useState<boolean>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_SHOW_TIMESTAMPS);
+    return saved === null ? true : saved === 'true';
+  });
+  const [formatDropdownOpen, setFormatDropdownOpen] = useState(false);
+  const formatDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Persist receive format to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_RECEIVE_FORMAT, receiveFormat);
+  }, [receiveFormat]);
+
+  // Persist timestamp setting to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SHOW_TIMESTAMPS, String(showTimestamps));
+  }, [showTimestamps]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (formatDropdownRef.current && !formatDropdownRef.current.contains(event.target as Node)) {
+        setFormatDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Smart auto-scroll: only scroll to bottom when there are NEW logs (not when toggling the switch)
   useEffect(() => {
     const currentLogsLength = logs.length;
     const hasNewLogs = currentLogsLength > previousLogsLengthRef.current;
-    
+
     if (autoScrollEnabled && hasNewLogs && logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
-    
+
     // Update the previous logs length for next comparison
     previousLogsLengthRef.current = currentLogsLength;
   }, [logs, autoScrollEnabled]);
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
-    const timeStr = date.toLocaleTimeString('en-US', { 
-      hour12: false, 
-      hour: '2-digit', 
-      minute: '2-digit', 
+    const timeStr = date.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
       second: '2-digit'
     });
     // Manually add milliseconds
@@ -43,25 +81,28 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     return `${timeStr}.${ms}`;
   };
 
-  const formatData = (data: number[]) => {
-    // Convert number array to string, handling both text and binary data
+  const formatDataAsHex = (data: number[]) => {
+    return data.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+  };
+
+  const formatDataAsText = (data: number[]) => {
     try {
       const bytes = new Uint8Array(data);
       const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-      
+
       // Check if the data contains mostly printable characters (including UTF-8)
       const printableChars = text.split('').filter(char => {
         const code = char.charCodeAt(0);
         // Include more character ranges: ASCII printable, Latin-1 supplement, and most Unicode characters
         return (code >= 32 && code <= 126) || // ASCII printable
-               (code >= 160 && code <= 255) || // Latin-1 supplement  
+               (code >= 160 && code <= 255) || // Latin-1 supplement
                (code >= 256 && code < 0xFFFE) || // Most Unicode characters
                code === 9 || code === 10 || code === 13; // Tab, LF, CR
       }).length;
-      
+
       // Check for replacement characters (indicating invalid UTF-8)
       const hasReplacementChars = text.includes('\uFFFD');
-      
+
       if (!hasReplacementChars && printableChars / text.length > 0.7) {
         // Valid UTF-8 text, show as text with visible control characters
         return text
@@ -81,14 +122,20 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
           });
       } else {
         // Contains non-printable or invalid UTF-8, show as hex
-        return Array.from(bytes)
-          .map(b => b.toString(16).padStart(2, '0').toUpperCase())
-          .join(' ');
+        return formatDataAsHex(data);
       }
     } catch {
       // Fallback to hex if decoding fails
-      return data.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+      return formatDataAsHex(data);
     }
+  };
+
+  const formatData = (data: number[]) => {
+    if (receiveFormat === 'Hex') {
+      return formatDataAsHex(data);
+    }
+    // 'Txt' uses auto-detection logic
+    return formatDataAsText(data);
   };
 
   const sentCount = logs.filter(log => log.direction === 'Sent').length;
@@ -114,6 +161,74 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Receive Format Dropdown */}
+          <div className="relative" ref={formatDropdownRef}>
+            <button
+              onClick={() => setFormatDropdownOpen(!formatDropdownOpen)}
+              className="flex items-center space-x-1 px-2 py-1 text-xs rounded transition-colors"
+              style={{
+                backgroundColor: colors.bgInput,
+                border: `1px solid ${colors.borderLight}`,
+                color: colors.textSecondary
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = colors.accent;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = colors.borderLight;
+              }}
+              title="Receive data display format"
+            >
+              <span>RX:</span>
+              <span style={{ color: colors.textPrimary }}>{receiveFormat}</span>
+              <ChevronDown size={12} />
+            </button>
+            {formatDropdownOpen && (
+              <div
+                className="absolute top-full right-0 mt-1 py-1 rounded-md shadow-lg z-50"
+                style={{
+                  backgroundColor: colors.bgSidebar,
+                  border: `1px solid ${colors.borderLight}`,
+                  minWidth: '80px'
+                }}
+              >
+                {(['Txt', 'Hex'] as ReceiveDisplayFormat[]).map((format) => (
+                  <button
+                    key={format}
+                    onClick={() => {
+                      setReceiveFormat(format);
+                      setFormatDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-1.5 text-xs text-left transition-colors"
+                    style={{
+                      backgroundColor: receiveFormat === format ? colors.bgHover : 'transparent',
+                      color: receiveFormat === format ? colors.textPrimary : colors.textSecondary
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = colors.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = receiveFormat === format ? colors.bgHover : 'transparent';
+                    }}
+                  >
+                    {format}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Timestamp Toggle */}
+          <div className="flex items-center space-x-2">
+            <span className="text-xs" style={{ color: colors.textTertiary }}>Timestamps</span>
+            <ToggleSwitch
+              checked={showTimestamps}
+              onChange={setShowTimestamps}
+              title="Toggle timestamp display"
+            />
+          </div>
+
+          {/* Auto Scroll Toggle */}
           <div className="flex items-center space-x-2 mr-2">
             <span className="text-xs" style={{ color: colors.textTertiary }}>Auto Scroll</span>
             <ToggleSwitch
@@ -199,9 +314,11 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                 }}
               >
                 <div className="flex items-start space-x-2">
-                  <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
-                    {formatTimestamp(log.timestamp)}
-                  </span>
+                  {showTimestamps && (
+                    <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
+                      {formatTimestamp(log.timestamp)}
+                    </span>
+                  )}
                   <span
                     className="font-bold text-xs uppercase select-none"
                     style={{ color: log.direction === 'Sent' ? colors.accent : colors.success }}
