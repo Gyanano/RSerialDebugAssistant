@@ -171,6 +171,22 @@ async fn get_log_limit(state: State<'_, AppState>) -> Result<usize, String> {
     Ok(manager.get_max_log_entries())
 }
 
+#[tauri::command]
+async fn set_frame_segmentation(
+    state: State<'_, AppState>,
+    config: FrameSegmentationConfig,
+) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_frame_segmentation_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_frame_segmentation(state: State<'_, AppState>) -> Result<FrameSegmentationConfig, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    Ok(manager.get_frame_segmentation_config())
+}
+
 fn main() {
     env_logger::init();
 
@@ -190,7 +206,9 @@ fn main() {
             load_session,
             list_sessions,
             set_log_limit,
-            get_log_limit
+            get_log_limit,
+            set_frame_segmentation,
+            get_frame_segmentation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

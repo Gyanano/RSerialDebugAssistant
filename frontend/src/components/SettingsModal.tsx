@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
-import { TextEncoding, SpecialCharConfig } from '../types';
+import { TextEncoding, SpecialCharConfig, FrameSegmentationConfig, FrameSegmentationMode, FrameDelimiter } from '../types';
 
 const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
   enabled: true,
@@ -14,6 +14,12 @@ const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
   convertNull: true,
   convertEsc: true,
   convertSpaces: true,
+};
+
+const DEFAULT_FRAME_SEGMENTATION_CONFIG: FrameSegmentationConfig = {
+  mode: 'Timeout',
+  timeout_ms: 10,
+  delimiter: 'AnyNewline',
 };
 
 interface SettingsModalProps {
@@ -30,6 +36,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [specialCharExpanded, setSpecialCharExpanded] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
 
+  // Frame segmentation state
+  const [frameSegmentationConfig, setFrameSegmentationConfig] = useState<FrameSegmentationConfig>(DEFAULT_FRAME_SEGMENTATION_CONFIG);
+  const [customDelimiterHex, setCustomDelimiterHex] = useState('');
+  const [customDelimiterError, setCustomDelimiterError] = useState('');
+
+  // Helper to get delimiter type for UI display
+  const getDelimiterType = (delimiter: FrameDelimiter): 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom' => {
+    if (typeof delimiter === 'object' && 'Custom' in delimiter) {
+      return 'Custom';
+    }
+    return delimiter as 'AnyNewline' | 'CR' | 'LF' | 'CRLF';
+  };
+
+  // Parse hex string to byte array
+  const parseHexString = (hex: string): number[] | null => {
+    const cleaned = hex.replace(/\s+/g, '').toUpperCase();
+    if (cleaned.length === 0) return null;
+    if (cleaned.length % 2 !== 0) return null;
+
+    const bytes: number[] = [];
+    for (let i = 0; i < cleaned.length; i += 2) {
+      const byte = parseInt(cleaned.substring(i, i + 2), 16);
+      if (isNaN(byte)) return null;
+      bytes.push(byte);
+    }
+    return bytes;
+  };
+
+  // Format byte array to hex string for display
+  const bytesToHexString = (bytes: number[]): string => {
+    return bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+  };
+
   // Load saved settings from localStorage on component mount
   useEffect(() => {
     const savedLogPath = localStorage.getItem('serialDebug_logPath');
@@ -37,6 +76,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     const savedMaxLogLines = localStorage.getItem('serialDebug_maxLogLines');
     const savedTextEncoding = localStorage.getItem('serialDebug_textEncoding');
     const savedSpecialCharConfig = localStorage.getItem('serialDebug_specialCharConfig');
+    const savedFrameSegmentationConfig = localStorage.getItem('serialDebug_frameSegmentation');
 
     if (savedLogPath) {
       setLogPath(savedLogPath);
@@ -54,6 +94,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       try {
         const parsed = JSON.parse(savedSpecialCharConfig);
         setSpecialCharConfig({ ...DEFAULT_SPECIAL_CHAR_CONFIG, ...parsed });
+      } catch {
+        // Use default if parsing fails
+      }
+    }
+    if (savedFrameSegmentationConfig) {
+      try {
+        const parsed = JSON.parse(savedFrameSegmentationConfig) as FrameSegmentationConfig;
+        setFrameSegmentationConfig(parsed);
+        // Initialize custom delimiter hex input if using custom
+        if (typeof parsed.delimiter === 'object' && 'Custom' in parsed.delimiter) {
+          setCustomDelimiterHex(bytesToHexString(parsed.delimiter.Custom));
+        }
       } catch {
         // Use default if parsing fails
       }
@@ -95,6 +147,64 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     const newConfig = { ...specialCharConfig, ...updates };
     setSpecialCharConfig(newConfig);
     localStorage.setItem('serialDebug_specialCharConfig', JSON.stringify(newConfig));
+  };
+
+  // Save frame segmentation config to localStorage and sync with backend
+  const handleFrameSegmentationChange = async (updates: Partial<FrameSegmentationConfig>) => {
+    const newConfig = { ...frameSegmentationConfig, ...updates };
+    setFrameSegmentationConfig(newConfig);
+    localStorage.setItem('serialDebug_frameSegmentation', JSON.stringify(newConfig));
+    try {
+      await invoke('set_frame_segmentation', { config: newConfig });
+    } catch (error) {
+      console.error('Error setting frame segmentation config:', error);
+    }
+  };
+
+  // Handle frame segmentation mode change
+  const handleModeChange = (mode: FrameSegmentationMode) => {
+    handleFrameSegmentationChange({ mode });
+  };
+
+  // Handle timeout change
+  const handleTimeoutChange = (timeout: number) => {
+    const clampedValue = Math.min(1000, Math.max(10, timeout));
+    handleFrameSegmentationChange({ timeout_ms: clampedValue });
+  };
+
+  // Handle delimiter type change
+  const handleDelimiterTypeChange = (type: 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom') => {
+    if (type === 'Custom') {
+      const bytes = parseHexString(customDelimiterHex);
+      if (bytes && bytes.length > 0) {
+        handleFrameSegmentationChange({ delimiter: { Custom: bytes } });
+        setCustomDelimiterError('');
+      } else {
+        // Set a default custom delimiter if none is valid
+        setCustomDelimiterHex('0A');
+        handleFrameSegmentationChange({ delimiter: { Custom: [0x0A] } });
+        setCustomDelimiterError('');
+      }
+    } else {
+      handleFrameSegmentationChange({ delimiter: type });
+      setCustomDelimiterError('');
+    }
+  };
+
+  // Handle custom delimiter hex input change
+  const handleCustomDelimiterChange = (hex: string) => {
+    setCustomDelimiterHex(hex);
+    const bytes = parseHexString(hex);
+    if (bytes === null && hex.trim() !== '') {
+      setCustomDelimiterError('Invalid hex format');
+    } else if (bytes && bytes.length === 0) {
+      setCustomDelimiterError('Delimiter cannot be empty');
+    } else {
+      setCustomDelimiterError('');
+      if (bytes && bytes.length > 0) {
+        handleFrameSegmentationChange({ delimiter: { Custom: bytes } });
+      }
+    }
   };
 
   // Handle folder selection with Tauri dialog
@@ -373,6 +483,109 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Frame Segmentation Item */}
+              <div
+                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+              >
+                <div className="p-3 flex flex-col space-y-3">
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>Frame Segmentation</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>How received data is split into log entries</span>
+                  </div>
+
+                  {/* Mode selector */}
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Mode:</span>
+                    <div
+                      className="flex rounded-md overflow-hidden flex-1"
+                      style={{ border: `1px solid ${colors.borderLight}` }}
+                    >
+                      {(['Timeout', 'Delimiter', 'Combined'] as FrameSegmentationMode[]).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => handleModeChange(mode)}
+                          className="flex-1 py-1 text-xs font-medium transition-colors"
+                          style={{
+                            backgroundColor: frameSegmentationConfig.mode === mode ? colors.accent : colors.bgSurface,
+                            color: frameSegmentationConfig.mode === mode ? '#ffffff' : colors.textSecondary,
+                          }}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Timeout setting - show for Timeout and Combined modes */}
+                  {(frameSegmentationConfig.mode === 'Timeout' || frameSegmentationConfig.mode === 'Combined') && (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Timeout:</span>
+                      <input
+                        type="number"
+                        min="10"
+                        max="1000"
+                        step="10"
+                        value={frameSegmentationConfig.timeout_ms}
+                        onChange={(e) => handleTimeoutChange(parseInt(e.target.value, 10) || 10)}
+                        className="w-20 px-2 py-1 text-xs rounded text-right focus:outline-none focus:ring-1"
+                        style={{
+                          backgroundColor: colors.bgSurface,
+                          border: `1px solid ${colors.border}`,
+                          color: colors.textPrimary
+                        }}
+                      />
+                      <span className="text-xs" style={{ color: colors.textTertiary }}>ms (10-1000)</span>
+                    </div>
+                  )}
+
+                  {/* Delimiter setting - show for Delimiter and Combined modes */}
+                  {(frameSegmentationConfig.mode === 'Delimiter' || frameSegmentationConfig.mode === 'Combined') && (
+                    <div className="flex flex-col space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Delimiter:</span>
+                        <select
+                          value={getDelimiterType(frameSegmentationConfig.delimiter)}
+                          onChange={(e) => handleDelimiterTypeChange(e.target.value as 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom')}
+                          className="flex-1 px-2 py-1 text-xs rounded focus:outline-none focus:ring-1"
+                          style={{
+                            backgroundColor: colors.bgSurface,
+                            border: `1px solid ${colors.border}`,
+                            color: colors.textPrimary
+                          }}
+                        >
+                          <option value="AnyNewline">Any Newline (\r, \n, \r\n)</option>
+                          <option value="CR">CR (\r, 0x0D)</option>
+                          <option value="LF">LF (\n, 0x0A)</option>
+                          <option value="CRLF">CRLF (\r\n, 0x0D 0x0A)</option>
+                          <option value="Custom">Custom</option>
+                        </select>
+                      </div>
+
+                      {/* Custom delimiter input */}
+                      {getDelimiterType(frameSegmentationConfig.delimiter) === 'Custom' && (
+                        <div className="flex items-center space-x-2 ml-16">
+                          <input
+                            type="text"
+                            value={customDelimiterHex}
+                            onChange={(e) => handleCustomDelimiterChange(e.target.value)}
+                            placeholder="e.g., 0D 0A or 1B5D"
+                            className="flex-1 px-2 py-1 text-xs font-mono rounded focus:outline-none focus:ring-1"
+                            style={{
+                              backgroundColor: colors.bgSurface,
+                              border: `1px solid ${customDelimiterError ? '#ef4444' : colors.border}`,
+                              color: colors.textPrimary
+                            }}
+                          />
+                          {customDelimiterError && (
+                            <span className="text-xs text-red-500">{customDelimiterError}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Sound Effects Item */}

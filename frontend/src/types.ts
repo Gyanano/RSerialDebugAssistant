@@ -80,3 +80,19 @@ export interface SpecialCharConfig {
   convertEsc: boolean;    // ESC -> ␛
   convertSpaces: boolean; // trailing/multiple spaces -> ␣
 }
+
+// Frame segmentation types
+export type FrameSegmentationMode = 'Timeout' | 'Delimiter' | 'Combined';
+
+export type FrameDelimiter =
+  | 'AnyNewline'
+  | 'CR'
+  | 'LF'
+  | 'CRLF'
+  | { Custom: number[] };
+
+export interface FrameSegmentationConfig {
+  mode: FrameSegmentationMode;
+  timeout_ms: number;
+  delimiter: FrameDelimiter;
+}

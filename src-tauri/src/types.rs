@@ -114,3 +114,55 @@ pub enum ExportFormat {
     Csv,
     Json,
 }
+
+// Frame Segmentation types
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub enum FrameSegmentationMode {
+    #[default]
+    Timeout,
+    Delimiter,
+    Combined,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub enum FrameDelimiter {
+    #[default]
+    AnyNewline, // Treats \r, \n, and \r\n all as a single line ending
+    CR,
+    LF,
+    CRLF,
+    Custom(Vec<u8>),
+}
+
+impl FrameDelimiter {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            FrameDelimiter::AnyNewline => vec![], // Special case, handled separately
+            FrameDelimiter::CR => vec![0x0D],
+            FrameDelimiter::LF => vec![0x0A],
+            FrameDelimiter::CRLF => vec![0x0D, 0x0A],
+            FrameDelimiter::Custom(bytes) => bytes.clone(),
+        }
+    }
+
+    pub fn is_any_newline(&self) -> bool {
+        matches!(self, FrameDelimiter::AnyNewline)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameSegmentationConfig {
+    pub mode: FrameSegmentationMode,
+    pub timeout_ms: u64,
+    pub delimiter: FrameDelimiter,
+}
+
+impl Default for FrameSegmentationConfig {
+    fn default() -> Self {
+        Self {
+            mode: FrameSegmentationMode::Timeout,
+            timeout_ms: 10,
+            delimiter: FrameDelimiter::AnyNewline,
+        }
+    }
+}

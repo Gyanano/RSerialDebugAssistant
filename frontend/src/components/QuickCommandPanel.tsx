@@ -1,7 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Send, ChevronDown, Edit2, Check, X, Trash2, Play } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Plus, Send, ChevronDown, Edit2, Check, X, Trash2, Play, Square, RefreshCw } from 'lucide-react';
 import { QuickCommand, QuickCommandList, LineEnding } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+
+const LOOP_INTERVAL_KEY = 'quickCommandLoopInterval';
+const DEFAULT_LOOP_INTERVAL = 1000;
+const MIN_LOOP_INTERVAL = 50;
+const MAX_LOOP_INTERVAL = 60000;
 
 interface QuickCommandPanelProps {
   lists: QuickCommandList[];
@@ -46,6 +51,15 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Loop sending state
+  const [isLooping, setIsLooping] = useState(false);
+  const [loopInterval, setLoopInterval] = useState(() => {
+    const saved = localStorage.getItem(LOOP_INTERVAL_KEY);
+    return saved ? parseInt(saved, 10) : DEFAULT_LOOP_INTERVAL;
+  });
+  const [iterationCount, setIterationCount] = useState(0);
+  const loopTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const currentList = lists.find(l => l.id === currentListId) || lists[0];
   const lineEndingOptions: { value: LineEnding; label: string }[] = [
     { value: 'None', label: 'None' },
@@ -64,6 +78,58 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Stop loop when disabled (disconnected)
+  useEffect(() => {
+    if (disabled && isLooping) {
+      stopLoop();
+    }
+  }, [disabled]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (loopTimerRef.current) {
+        clearInterval(loopTimerRef.current);
+      }
+    };
+  }, []);
+
+  const stopLoop = useCallback(() => {
+    if (loopTimerRef.current) {
+      clearInterval(loopTimerRef.current);
+      loopTimerRef.current = null;
+    }
+    setIsLooping(false);
+    setIterationCount(0);
+  }, []);
+
+  const handleLoopIntervalChange = (value: string) => {
+    let numValue = parseInt(value, 10);
+    if (isNaN(numValue)) numValue = DEFAULT_LOOP_INTERVAL;
+    numValue = Math.max(MIN_LOOP_INTERVAL, Math.min(MAX_LOOP_INTERVAL, numValue));
+    setLoopInterval(numValue);
+    localStorage.setItem(LOOP_INTERVAL_KEY, numValue.toString());
+  };
+
+  const startLoop = () => {
+    const selectedCommands = currentList.commands.filter(c => c.selected && c.content.trim());
+    if (selectedCommands.length === 0 || disabled) return;
+
+    // Send immediately (first iteration)
+    onSendSelected(selectedCommands);
+    setIterationCount(1);
+    setIsLooping(true);
+
+    // Schedule subsequent iterations
+    loopTimerRef.current = setInterval(() => {
+      const cmds = currentList.commands.filter(c => c.selected && c.content.trim());
+      if (cmds.length > 0) {
+        onSendSelected(cmds);
+        setIterationCount(prev => prev + 1);
+      }
+    }, loopInterval);
+  };
 
   const updateCurrentList = (updatedCommands: QuickCommand[]) => {
     const updatedLists = lists.map(list =>
@@ -424,21 +490,93 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
           )}
         </div>
 
-        {/* Send Selected Button */}
-        <button
-          onClick={handleSendAllSelected}
-          disabled={disabled || selectedCount === 0}
-          className="flex items-center space-x-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all"
-          style={{
-            backgroundColor: !disabled && selectedCount > 0 ? colors.accent : colors.bgSurface,
-            color: !disabled && selectedCount > 0 ? '#ffffff' : colors.textTertiary,
-            opacity: disabled || selectedCount === 0 ? 0.5 : 1,
-            cursor: disabled || selectedCount === 0 ? 'not-allowed' : 'pointer'
-          }}
-        >
-          <Play size={14} />
-          <span>List Send {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
-        </button>
+        {/* Right side controls */}
+        <div className="flex items-center space-x-2">
+          {/* Loop Interval Input */}
+          <div className="flex items-center space-x-1">
+            <input
+              type="number"
+              value={loopInterval}
+              onChange={(e) => handleLoopIntervalChange(e.target.value)}
+              onBlur={(e) => handleLoopIntervalChange(e.target.value)}
+              min={MIN_LOOP_INTERVAL}
+              max={MAX_LOOP_INTERVAL}
+              disabled={disabled || isLooping}
+              className="w-16 px-2 py-1 text-xs font-mono rounded focus:outline-none focus:ring-1 text-center"
+              style={{
+                backgroundColor: colors.bgInput,
+                border: `1px solid ${colors.border}`,
+                color: colors.textPrimary,
+                '--tw-ring-color': colors.accent,
+                opacity: isLooping ? 0.5 : 1
+              } as React.CSSProperties}
+              title="Loop interval in milliseconds"
+            />
+            <span className="text-xs" style={{ color: colors.textTertiary }}>ms</span>
+          </div>
+
+          {/* Loop Status Indicator */}
+          {isLooping && (
+            <div
+              className="flex items-center space-x-1 px-2 py-1 rounded text-xs"
+              style={{
+                backgroundColor: `${colors.accent}20`,
+                color: colors.accent
+              }}
+            >
+              <RefreshCw size={12} className="animate-spin" />
+              <span>Loop: {iterationCount}</span>
+            </div>
+          )}
+
+          {/* Loop Send / Stop Button */}
+          {isLooping ? (
+            <button
+              onClick={stopLoop}
+              className="flex items-center space-x-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all"
+              style={{
+                backgroundColor: colors.error,
+                color: '#ffffff',
+                cursor: 'pointer'
+              }}
+            >
+              <Square size={14} />
+              <span>Stop</span>
+            </button>
+          ) : (
+            <button
+              onClick={startLoop}
+              disabled={disabled || selectedCount === 0}
+              className="flex items-center space-x-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all"
+              style={{
+                backgroundColor: !disabled && selectedCount > 0 ? colors.success : colors.bgSurface,
+                color: !disabled && selectedCount > 0 ? '#ffffff' : colors.textTertiary,
+                opacity: disabled || selectedCount === 0 ? 0.5 : 1,
+                cursor: disabled || selectedCount === 0 ? 'not-allowed' : 'pointer'
+              }}
+              title="Send selected commands repeatedly at interval"
+            >
+              <RefreshCw size={14} />
+              <span>Loop Send</span>
+            </button>
+          )}
+
+          {/* Send Selected Button */}
+          <button
+            onClick={handleSendAllSelected}
+            disabled={disabled || selectedCount === 0 || isLooping}
+            className="flex items-center space-x-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all"
+            style={{
+              backgroundColor: !disabled && selectedCount > 0 && !isLooping ? colors.accent : colors.bgSurface,
+              color: !disabled && selectedCount > 0 && !isLooping ? '#ffffff' : colors.textTertiary,
+              opacity: disabled || selectedCount === 0 || isLooping ? 0.5 : 1,
+              cursor: disabled || selectedCount === 0 || isLooping ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <Play size={14} />
+            <span>List Send {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
+          </button>
+        </div>
       </div>
     </div>
   );

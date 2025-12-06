@@ -17,6 +17,7 @@ pub struct SerialManager {
     stats: Arc<Mutex<SerialStats>>,
     shutdown_flag: Arc<AtomicBool>,
     max_log_entries: Arc<Mutex<usize>>,
+    frame_segmentation_config: Arc<Mutex<FrameSegmentationConfig>>,
 }
 
 #[derive(Debug, Default)]
@@ -37,6 +38,7 @@ impl SerialManager {
             stats: Arc::new(Mutex::new(SerialStats::default())),
             shutdown_flag: Arc::new(AtomicBool::new(false)),
             max_log_entries: Arc::new(Mutex::new(1000)),
+            frame_segmentation_config: Arc::new(Mutex::new(FrameSegmentationConfig::default())),
         }
     }
 
@@ -123,6 +125,7 @@ impl SerialManager {
         let logs = Arc::clone(&self.logs);
         let stats = Arc::clone(&self.stats);
         let max_log_entries = Arc::clone(&self.max_log_entries);
+        let frame_segmentation_config = Arc::clone(&self.frame_segmentation_config);
         let port_name_clone = port_name.to_string();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
         let mut read_port = port.try_clone()?;
@@ -131,7 +134,7 @@ impl SerialManager {
             let mut buffer = [0; 1024];
             let mut accumulated_data = Vec::new();
             let mut last_data_time = Instant::now();
-            
+
             loop {
                 // Check shutdown flag
                 if shutdown_flag.load(Ordering::Relaxed) {
@@ -139,14 +142,92 @@ impl SerialManager {
                     break;
                 }
 
+                // Get current segmentation config
+                let seg_config = frame_segmentation_config.lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
+                let timeout_duration = Duration::from_millis(seg_config.timeout_ms);
+
                 match read_port.read(&mut buffer) {
                     Ok(bytes_read) if bytes_read > 0 => {
                         accumulated_data.extend_from_slice(&buffer[..bytes_read]);
                         last_data_time = Instant::now();
+
+                        // Check for delimiter-based segmentation
+                        if seg_config.mode == FrameSegmentationMode::Delimiter ||
+                           seg_config.mode == FrameSegmentationMode::Combined {
+
+                            // Handle AnyNewline specially - it matches \r, \n, or \r\n as single delimiter
+                            if seg_config.delimiter.is_any_newline() {
+                                while let Some((pos, len)) = find_any_newline(&accumulated_data) {
+                                    let frame_end = pos + len;
+                                    let frame_data: Vec<u8> = accumulated_data.drain(..frame_end).collect();
+                                    let data_len = frame_data.len();
+
+                                    let log_entry = LogEntry {
+                                        id: None,
+                                        timestamp: Utc::now(),
+                                        direction: Direction::Received,
+                                        data: frame_data,
+                                        format: DataFormat::Text,
+                                        port_name: port_name_clone.clone(),
+                                    };
+
+                                    if let Ok(mut logs_guard) = logs.lock() {
+                                        logs_guard.push_back(log_entry);
+                                        let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+                                        while logs_guard.len() > max_entries {
+                                            logs_guard.pop_front();
+                                        }
+                                    }
+
+                                    if let Ok(mut stats_guard) = stats.lock() {
+                                        stats_guard.bytes_received += data_len as u64;
+                                    }
+                                }
+                            } else {
+                                // Standard delimiter matching
+                                let delimiter_bytes = seg_config.delimiter.to_bytes();
+
+                                // Process all complete frames in accumulated data
+                                while let Some(pos) = find_delimiter(&accumulated_data, &delimiter_bytes) {
+                                    let frame_end = pos + delimiter_bytes.len();
+                                    let frame_data: Vec<u8> = accumulated_data.drain(..frame_end).collect();
+                                    let data_len = frame_data.len();
+
+                                    let log_entry = LogEntry {
+                                        id: None,
+                                        timestamp: Utc::now(),
+                                        direction: Direction::Received,
+                                        data: frame_data,
+                                        format: DataFormat::Text,
+                                        port_name: port_name_clone.clone(),
+                                    };
+
+                                    if let Ok(mut logs_guard) = logs.lock() {
+                                        logs_guard.push_back(log_entry);
+                                        let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+                                        while logs_guard.len() > max_entries {
+                                            logs_guard.pop_front();
+                                        }
+                                    }
+
+                                    if let Ok(mut stats_guard) = stats.lock() {
+                                        stats_guard.bytes_received += data_len as u64;
+                                    }
+                                }
+                            }
+                        }
                     }
                     Ok(_) => {
-                        // Check if we should flush accumulated data (no new data for 10ms)
-                        if !accumulated_data.is_empty() && last_data_time.elapsed() > Duration::from_millis(10) {
+                        // Check if we should flush accumulated data based on timeout
+                        let should_flush_timeout =
+                            (seg_config.mode == FrameSegmentationMode::Timeout ||
+                             seg_config.mode == FrameSegmentationMode::Combined) &&
+                            !accumulated_data.is_empty() &&
+                            last_data_time.elapsed() > timeout_duration;
+
+                        if should_flush_timeout {
                             let data_len = accumulated_data.len();
                             let log_entry = LogEntry {
                                 id: None,
@@ -176,7 +257,13 @@ impl SerialManager {
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
                         // Check if we should flush accumulated data on timeout
-                        if !accumulated_data.is_empty() && last_data_time.elapsed() > Duration::from_millis(10) {
+                        let should_flush_timeout =
+                            (seg_config.mode == FrameSegmentationMode::Timeout ||
+                             seg_config.mode == FrameSegmentationMode::Combined) &&
+                            !accumulated_data.is_empty() &&
+                            last_data_time.elapsed() > timeout_duration;
+
+                        if should_flush_timeout {
                             let data_len = accumulated_data.len();
                             let log_entry = LogEntry {
                                 id: None,
@@ -194,12 +281,12 @@ impl SerialManager {
                                     logs_guard.pop_front();
                                 }
                             }
-                            
+
                             // Update received bytes statistics
                             if let Ok(mut stats_guard) = stats.lock() {
                                 stats_guard.bytes_received += data_len as u64;
                             }
-                            
+
                             accumulated_data.clear();
                         }
                         thread::sleep(Duration::from_millis(1));
@@ -394,4 +481,53 @@ impl SerialManager {
     pub fn get_max_log_entries(&self) -> usize {
         *self.max_log_entries.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    pub fn set_frame_segmentation_config(&self, config: FrameSegmentationConfig) {
+        let config = FrameSegmentationConfig {
+            timeout_ms: config.timeout_ms.clamp(10, 1000),
+            ..config
+        };
+        if let Ok(mut guard) = self.frame_segmentation_config.lock() {
+            *guard = config;
+        }
+    }
+
+    pub fn get_frame_segmentation_config(&self) -> FrameSegmentationConfig {
+        self.frame_segmentation_config
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Find the position of a delimiter in the data buffer
+fn find_delimiter(data: &[u8], delimiter: &[u8]) -> Option<usize> {
+    if delimiter.is_empty() || data.len() < delimiter.len() {
+        return None;
+    }
+
+    data.windows(delimiter.len())
+        .position(|window| window == delimiter)
+}
+
+/// Find any newline sequence (\r, \n, or \r\n) in the data buffer.
+/// Returns (position, length) where length is 1 for \r or \n alone, and 2 for \r\n.
+/// This correctly handles \r\n as a single line ending (not two separate ones).
+fn find_any_newline(data: &[u8]) -> Option<(usize, usize)> {
+    for i in 0..data.len() {
+        match data[i] {
+            0x0D => { // CR
+                // Check if followed by LF (CRLF sequence)
+                if i + 1 < data.len() && data[i + 1] == 0x0A {
+                    return Some((i, 2)); // CRLF
+                }
+                return Some((i, 1)); // CR alone
+            }
+            0x0A => { // LF alone (not preceded by CR, as CRLF would have been caught above)
+                return Some((i, 1));
+            }
+            _ => continue,
+        }
+    }
+    None
 }

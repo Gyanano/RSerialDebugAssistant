@@ -7,7 +7,7 @@ import LogViewer from './components/LogViewer';
 import SendPanel, { SEND_PANEL_MIN_HEIGHTS } from './components/SendPanel';
 import StatusBar from './components/StatusBar';
 import SettingsModal from './components/SettingsModal';
-import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, TextEncoding } from './types';
+import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, TextEncoding, FrameSegmentationConfig } from './types';
 import { useTheme } from './contexts/ThemeContext';
 import { appendChecksum } from './utils/checksum';
 
@@ -16,6 +16,7 @@ const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
 const STORAGE_KEY_SIDEBAR_WIDTH = 'serialDebug_sidebarWidth';
 const STORAGE_KEY_SIDEBAR_COLLAPSED = 'serialDebug_sidebarCollapsed';
 const STORAGE_KEY_LOG_VIEWER_HEIGHT = 'serialDebug_logViewerHeight';
+const STORAGE_KEY_FRAME_SEGMENTATION = 'serialDebug_frameSegmentation';
 const INITIAL_COMMANDS = 20;
 
 // Layout constants
@@ -369,6 +370,20 @@ function App() {
       }
     };
     initLogLimit();
+
+    // Initialize frame segmentation config from localStorage
+    const initFrameSegmentation = async () => {
+      const savedConfig = localStorage.getItem(STORAGE_KEY_FRAME_SEGMENTATION);
+      if (savedConfig) {
+        try {
+          const config = JSON.parse(savedConfig) as FrameSegmentationConfig;
+          await invoke('set_frame_segmentation', { config });
+        } catch (error) {
+          console.error('Failed to initialize frame segmentation:', error);
+        }
+      }
+    };
+    initFrameSegmentation();
 
     // Set up intervals for updating status, logs, and ports
     const statusInterval = setInterval(updateStatus, 1000);
