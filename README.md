@@ -14,6 +14,8 @@
 
 [✨ Features](#-features) | [📦 Installation](#-installation) | [🚀 Quick Start](#-quick-start) | [📋 Usage Guide](#-usage-guide) | [🔧 Development](#-development) | [❤️ Contributing](#-contributing)
 
+**[English](./README.md) | [简体中文](./README.zh-CN.md)**
+
 </div>
 
 ---
@@ -27,7 +29,7 @@ Whether you're debugging Arduino projects, communicating with industrial sensors
 ## ✨ Features
 
 ### 🎨 User Interface
-- **Light/Dark Theme** - Automatic and manual theme switching with macOS-style design
+- **Light/Dark Theme** - Automatic and manual theme switching with modern-style design
 - **Responsive Layout** - Resizable panels with persistent layout preferences
 - **Real-time Logging** - Live communication display with precise timestamps and direction indicators
 - **Multi-language Support** - English and Chinese (Simplified) interface
@@ -55,7 +57,6 @@ Whether you're debugging Arduino projects, communicating with industrial sensors
 - **Data Recording** - Automatic logging with timestamp and direction tracking
 - **Data Export** - Save communication logs in TXT format with full metadata
 - **Configurable Settings** - Customize log directory, max log entries, timezone, and more
-- **Keyboard Shortcuts** - Ctrl+Enter to send, and other productivity shortcuts
 
 ## 📦 Installation
 
@@ -66,8 +67,6 @@ Download the latest release from the project repository:
 | Platform | Format | Notes |
 |----------|--------|-------|
 | Windows  | `.msi` or `.exe` | Recommended installer format |
-| macOS    | `.dmg` | Universal binary for Intel/Apple Silicon |
-| Linux    | `.deb` or `.AppImage` | Choose based on your distribution |
 
 > **Note:** Pre-built binaries may need to be built locally. Check the repository for the latest release builds.
 
@@ -97,8 +96,6 @@ cargo tauri build
 
 The compiled application binaries will be located in:
 - **Windows**: `src-tauri/target/release/bundle/msi/`
-- **macOS**: `src-tauri/target/release/bundle/macos/`
-- **Linux**: `src-tauri/target/release/bundle/deb/` or `src-tauri/target/release/bundle/appimage/`
 
 ## 🚀 Quick Start
 
@@ -140,7 +137,7 @@ The development app will launch automatically with hot-reload enabled.
 4. **Send Data**
    - Enter text or hex values in the send panel
    - Add checksum automatically if needed
-   - Press **Ctrl+Enter** or click "Send" button
+   - Click "Send" button
    - Use Quick Commands for frequently sent data
 
 5. **Monitor Communication**
@@ -191,15 +188,14 @@ Configure how incoming data is split into messages:
 
 Automatically append checksums to outgoing data:
 
-1. In **Send Panel**, click "Checksum Settings"
-2. Select algorithm:
+1. In **Send Panel** and select algorithm:
    - **XOR**: Bitwise XOR of all bytes
    - **ADD8**: Sum of all bytes (8-bit)
    - **CRC8/CRC16/CCITT-CRC16**: Cyclic redundancy check variants
-3. Configure:
+2. Configure:
    - **Start Index**: Beginning byte for calculation
    - **End Index**: Ending byte (negative values count from end)
-4. Enable "Auto Append" to add checksum to every message
+3. Enable "Auto Append" to add checksum to every message
 
 #### 🎯 Quick Commands
 

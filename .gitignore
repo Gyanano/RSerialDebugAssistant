@@ -58,3 +58,4 @@ coverage/
 /book/
 *.md
 !README.md
+!README.zh-CN.md
