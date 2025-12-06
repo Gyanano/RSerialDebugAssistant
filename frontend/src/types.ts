@@ -96,3 +96,13 @@ export interface FrameSegmentationConfig {
   timeout_ms: number;
   delimiter: FrameDelimiter;
 }
+
+// Recording status
+export interface RecordingStatus {
+  text_recording_active: boolean;
+  raw_recording_active: boolean;
+  text_file_path: string | null;
+  raw_file_path: string | null;
+}
+// Timezone configuration
+export type TimezoneOption = 'System' | string; // 'System' or UTC offset like 'UTC+8', 'UTC-5', etc.

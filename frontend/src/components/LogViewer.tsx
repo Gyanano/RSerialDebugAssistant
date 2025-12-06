@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Trash2, Download, Terminal, ChevronDown } from 'lucide-react';
-import { LogEntry, TextEncoding, SpecialCharConfig } from '../types';
+import { Trash2, Download, Terminal, ChevronDown, Circle } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { LogEntry, TextEncoding, SpecialCharConfig, RecordingStatus } from '../types';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from '../i18n';
+import { loadTimezone, formatTimestampWithTimezone } from '../utils/timezone';
 
 type ReceiveDisplayFormat = 'Txt' | 'Hex';
 
@@ -10,6 +13,9 @@ const STORAGE_KEY_RECEIVE_FORMAT = 'serialDebug_receiveFormat';
 const STORAGE_KEY_SHOW_TIMESTAMPS = 'serialDebug_showTimestamps';
 const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
 const STORAGE_KEY_SPECIAL_CHAR_CONFIG = 'serialDebug_specialCharConfig';
+const STORAGE_KEY_SAVE_TEXT_ENABLED = 'serialDebug_saveTextEnabled';
+const STORAGE_KEY_SAVE_RAW_ENABLED = 'serialDebug_saveRawEnabled';
+const STORAGE_KEY_LOG_PATH = 'serialDebug_logPath';
 
 const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
   enabled: true,
@@ -30,9 +36,11 @@ interface LogViewerProps {
 
 const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnected }) => {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const previousLogsLengthRef = useRef(logs.length);
+  const wasConnectedRef = useRef(isConnected);
 
   // State for receive format and timestamp display
   const [receiveFormat, setReceiveFormat] = useState<ReceiveDisplayFormat>(() => {
@@ -60,6 +68,22 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   });
   const [formatDropdownOpen, setFormatDropdownOpen] = useState(false);
   const formatDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Recording states
+  const [saveTextEnabled, setSaveTextEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_SAVE_TEXT_ENABLED);
+    return saved === 'true';
+  });
+  const [saveRawEnabled, setSaveRawEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_SAVE_RAW_ENABLED);
+    return saved === 'true';
+  });
+  const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>({
+    text_recording_active: false,
+    raw_recording_active: false,
+    text_file_path: null,
+    raw_file_path: null,
+  });
 
   // Persist receive format to localStorage
   useEffect(() => {
@@ -122,17 +146,113 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     previousLogsLengthRef.current = currentLogsLength;
   }, [logs, autoScrollEnabled]);
 
+  // Persist recording checkbox states to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SAVE_TEXT_ENABLED, String(saveTextEnabled));
+  }, [saveTextEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SAVE_RAW_ENABLED, String(saveRawEnabled));
+  }, [saveRawEnabled]);
+
+  // Sync log directory with backend on mount and when it changes
+  useEffect(() => {
+    const syncLogDirectory = async () => {
+      const logPath = localStorage.getItem(STORAGE_KEY_LOG_PATH);
+      if (logPath) {
+        try {
+          await invoke('set_log_directory', { path: logPath });
+        } catch (error) {
+          console.error('Error setting log directory:', error);
+        }
+      }
+    };
+    syncLogDirectory();
+
+    // Also listen for changes
+    const interval = setInterval(() => {
+      const logPath = localStorage.getItem(STORAGE_KEY_LOG_PATH);
+      if (logPath) {
+        invoke('set_log_directory', { path: logPath }).catch(console.error);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Handle auto-start/stop recording based on connection state
+  useEffect(() => {
+    const handleConnectionChange = async () => {
+      const wasConnected = wasConnectedRef.current;
+      wasConnectedRef.current = isConnected;
+
+      if (isConnected && !wasConnected) {
+        // Just connected - start recordings if checkboxes are enabled
+        if (saveTextEnabled) {
+          try {
+            await invoke('start_text_recording');
+          } catch (error) {
+            console.error('Error starting text recording:', error);
+          }
+        }
+        if (saveRawEnabled) {
+          try {
+            await invoke('start_raw_recording');
+          } catch (error) {
+            console.error('Error starting raw recording:', error);
+          }
+        }
+      }
+
+      // Update recording status
+      try {
+        const status = await invoke<RecordingStatus>('get_recording_status');
+        setRecordingStatus(status);
+      } catch (error) {
+        console.error('Error getting recording status:', error);
+      }
+    };
+
+    handleConnectionChange();
+  }, [isConnected, saveTextEnabled, saveRawEnabled]);
+
+  // Handle checkbox changes when connected
+  const handleSaveTextChange = async (enabled: boolean) => {
+    setSaveTextEnabled(enabled);
+    if (isConnected) {
+      try {
+        if (enabled) {
+          await invoke('start_text_recording');
+        } else {
+          await invoke('stop_text_recording');
+        }
+        const status = await invoke<RecordingStatus>('get_recording_status');
+        setRecordingStatus(status);
+      } catch (error) {
+        console.error('Error toggling text recording:', error);
+      }
+    }
+  };
+
+  const handleSaveRawChange = async (enabled: boolean) => {
+    setSaveRawEnabled(enabled);
+    if (isConnected) {
+      try {
+        if (enabled) {
+          await invoke('start_raw_recording');
+        } else {
+          await invoke('stop_raw_recording');
+        }
+        const status = await invoke<RecordingStatus>('get_recording_status');
+        setRecordingStatus(status);
+      } catch (error) {
+        console.error('Error toggling raw recording:', error);
+      }
+    }
+  };
+
   const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const timeStr = date.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-    // Manually add milliseconds
-    const ms = date.getMilliseconds().toString().padStart(3, '0');
-    return `${timeStr}.${ms}`;
+    return formatTimestampWithTimezone(timestamp, loadTimezone());
   };
 
   const formatDataAsHex = (data: number[]) => {
@@ -191,98 +311,22 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
+      {/* Header - Two Rows */}
       <div
-        className="h-12 px-4 flex items-center justify-between shadow-sm z-10"
+        className="flex flex-col shadow-sm z-10"
         style={{
           backgroundColor: colors.bgHeader,
           borderBottom: `1px solid ${colors.borderDark}`
         }}
       >
-        <div className="flex items-center space-x-2" style={{ color: colors.textSecondary }}>
-          <Terminal size={16} style={{ color: colors.textTertiary }} />
-          <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>Console Output</span>
-          <span className="text-xs" style={{ color: colors.textTertiary }}>
-            ({logs.length})
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          {/* Receive Format Dropdown */}
-          <div className="relative" ref={formatDropdownRef}>
-            <button
-              onClick={() => setFormatDropdownOpen(!formatDropdownOpen)}
-              className="flex items-center space-x-1 px-2 py-1 text-xs rounded transition-colors"
-              style={{
-                backgroundColor: colors.bgInput,
-                border: `1px solid ${colors.borderLight}`,
-                color: colors.textSecondary
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = colors.accent;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = colors.borderLight;
-              }}
-              title="Receive data display format"
-            >
-              <span>Format:</span>
-              <span style={{ color: colors.textPrimary }}>{receiveFormat}</span>
-              <ChevronDown size={12} />
-            </button>
-            {formatDropdownOpen && (
-              <div
-                className="absolute top-full right-0 mt-1 py-1 rounded-md shadow-lg z-50"
-                style={{
-                  backgroundColor: colors.bgSidebar,
-                  border: `1px solid ${colors.borderLight}`,
-                  minWidth: '80px'
-                }}
-              >
-                {(['Txt', 'Hex'] as ReceiveDisplayFormat[]).map((format) => (
-                  <button
-                    key={format}
-                    onClick={() => {
-                      setReceiveFormat(format);
-                      setFormatDropdownOpen(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-xs text-left transition-colors"
-                    style={{
-                      backgroundColor: receiveFormat === format ? colors.bgHover : 'transparent',
-                      color: receiveFormat === format ? colors.textPrimary : colors.textSecondary
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = colors.bgHover;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = receiveFormat === format ? colors.bgHover : 'transparent';
-                    }}
-                  >
-                    {format}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Timestamp Toggle */}
-          <div className="flex items-center space-x-2">
-            <span className="text-xs" style={{ color: colors.textTertiary }}>Timestamps</span>
-            <ToggleSwitch
-              checked={showTimestamps}
-              onChange={setShowTimestamps}
-              title="Toggle timestamp display"
-            />
-          </div>
-
-          {/* Auto Scroll Toggle */}
-          <div className="flex items-center space-x-2 mr-2">
-            <span className="text-xs" style={{ color: colors.textTertiary }}>Auto Scroll</span>
-            <ToggleSwitch
-              checked={autoScrollEnabled}
-              onChange={setAutoScrollEnabled}
-              title="Toggle auto-scroll to bottom"
-            />
+        {/* Row 1: Console Output title, Export, Clear */}
+        <div className="h-9 px-4 flex items-center justify-between">
+          <div className="flex items-center space-x-2" style={{ color: colors.textSecondary }}>
+            <Terminal size={16} style={{ color: colors.textTertiary }} />
+            <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>{t('logViewer.consoleOutput')}</span>
+            <span className="text-xs" style={{ color: colors.textTertiary }}>
+              ({logs.length})
+            </span>
           </div>
 
           <div
@@ -302,10 +346,10 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                 e.currentTarget.style.color = colors.textSecondary;
               }}
               disabled={logs.length === 0}
-              title="Export logs"
+              title={t('logViewer.exportLogs')}
             >
               <Download size={12} />
-              <span>Export</span>
+              <span>{t('logViewer.export')}</span>
             </button>
             <div className="w-px my-0.5 mx-0.5" style={{ backgroundColor: colors.border }}></div>
             <button
@@ -321,11 +365,135 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                 e.currentTarget.style.color = colors.textSecondary;
               }}
               disabled={logs.length === 0}
-              title="Clear logs"
+              title={t('logViewer.clearLogs')}
             >
               <Trash2 size={12} />
-              <span>Clear</span>
+              <span>{t('logViewer.clear')}</span>
             </button>
+          </div>
+        </div>
+
+        {/* Row 2: Format, Timestamps, Auto Scroll, Save Text, Save Raw */}
+        <div
+          className="h-8 px-4 flex items-center justify-between"
+          style={{ borderTop: `1px solid ${colors.borderLight}` }}
+        >
+          <div className="flex items-center space-x-3">
+            {/* Receive Format Dropdown */}
+            <div className="relative" ref={formatDropdownRef}>
+              <button
+                onClick={() => setFormatDropdownOpen(!formatDropdownOpen)}
+                className="flex items-center space-x-1 px-2 py-0.5 text-xs rounded transition-colors"
+                style={{
+                  backgroundColor: colors.bgInput,
+                  border: `1px solid ${colors.borderLight}`,
+                  color: colors.textSecondary
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = colors.accent;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = colors.borderLight;
+                }}
+                title={t('logViewer.receiveFormat')}
+              >
+                <span>{t('logViewer.format')}:</span>
+                <span style={{ color: colors.textPrimary }}>{receiveFormat}</span>
+                <ChevronDown size={12} />
+              </button>
+              {formatDropdownOpen && (
+                <div
+                  className="absolute top-full left-0 mt-1 py-1 rounded-md shadow-lg z-50"
+                  style={{
+                    backgroundColor: colors.bgSidebar,
+                    border: `1px solid ${colors.borderLight}`,
+                    minWidth: '80px'
+                  }}
+                >
+                  {(['Txt', 'Hex'] as ReceiveDisplayFormat[]).map((format) => (
+                    <button
+                      key={format}
+                      onClick={() => {
+                        setReceiveFormat(format);
+                        setFormatDropdownOpen(false);
+                      }}
+                      className="w-full px-3 py-1.5 text-xs text-left transition-colors"
+                      style={{
+                        backgroundColor: receiveFormat === format ? colors.bgHover : 'transparent',
+                        color: receiveFormat === format ? colors.textPrimary : colors.textSecondary
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = colors.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = receiveFormat === format ? colors.bgHover : 'transparent';
+                      }}
+                    >
+                      {format}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Timestamp Toggle */}
+            <div className="flex items-center space-x-1.5">
+              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.timestamps')}</span>
+              <ToggleSwitch
+                checked={showTimestamps}
+                onChange={setShowTimestamps}
+                title={t('logViewer.toggleTimestamps')}
+              />
+            </div>
+
+            {/* Auto Scroll Toggle */}
+            <div className="flex items-center space-x-1.5">
+              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.autoScroll')}</span>
+              <ToggleSwitch
+                checked={autoScrollEnabled}
+                onChange={setAutoScrollEnabled}
+                title={t('logViewer.toggleAutoScroll')}
+              />
+            </div>
+          </div>
+
+          {/* Recording Checkboxes */}
+          <div className="flex items-center space-x-3">
+            {/* Save Text Checkbox */}
+            <label
+              className="flex items-center space-x-1.5 cursor-pointer"
+              title={recordingStatus.text_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.text_file_path}` : t('logViewer.enableTextRecording')}
+            >
+              <input
+                type="checkbox"
+                checked={saveTextEnabled}
+                onChange={(e) => handleSaveTextChange(e.target.checked)}
+                className="w-3.5 h-3.5 rounded"
+                style={{ accentColor: colors.accent }}
+              />
+              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveText')}</span>
+              {recordingStatus.text_recording_active && (
+                <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
+              )}
+            </label>
+
+            {/* Save Raw Checkbox */}
+            <label
+              className="flex items-center space-x-1.5 cursor-pointer"
+              title={recordingStatus.raw_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.raw_file_path}` : t('logViewer.enableRawRecording')}
+            >
+              <input
+                type="checkbox"
+                checked={saveRawEnabled}
+                onChange={(e) => handleSaveRawChange(e.target.checked)}
+                className="w-3.5 h-3.5 rounded"
+                style={{ accentColor: colors.accent }}
+              />
+              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveRaw')}</span>
+              {recordingStatus.raw_recording_active && (
+                <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
+              )}
+            </label>
           </div>
         </div>
       </div>
@@ -340,11 +508,11 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
           <div className="flex items-center justify-center h-full" style={{ color: colors.textTertiary }}>
             <div className="text-center">
               <Terminal size={48} className="mx-auto mb-4 opacity-50" />
-              <p className="text-lg">No communication data</p>
+              <p className="text-lg">{t('logViewer.noData')}</p>
               <p className="text-sm mt-2">
                 {isConnected
-                  ? "Data will appear here when you send or receive messages"
-                  : "Connect to a serial port to start logging communication"
+                  ? t('logViewer.dataWillAppear')
+                  : t('logViewer.connectToStart')
                 }
               </p>
             </div>
@@ -397,14 +565,14 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         <div className="flex space-x-4">
           <span className="flex items-center">
             <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.accent }}></div>
-            TX: {sentCount}
+            {t('logViewer.tx')}: {sentCount}
           </span>
           <span className="flex items-center">
             <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.success }}></div>
-            RX: {receivedCount}
+            {t('logViewer.rx')}: {receivedCount}
           </span>
         </div>
-        <span>Total: {totalBytes.toLocaleString()} Bytes</span>
+        <span>{t('logViewer.total')}: {totalBytes.toLocaleString()} {t('logViewer.bytes')}</span>
       </div>
     </div>
   );

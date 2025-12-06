@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Edit3, X } from 'lucide-react';
 import { SerialConfig, DataBits, Parity, StopBits, FlowControl } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from '../i18n';
 
 interface ConfigPanelProps {
   config: SerialConfig;
@@ -11,6 +12,7 @@ interface ConfigPanelProps {
 
 const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled }) => {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const [isCustomBaudRate, setIsCustomBaudRate] = useState(false);
   const [customBaudRate, setCustomBaudRate] = useState('9600');
 
@@ -59,12 +61,12 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
       {/* Baud Rate Group */}
       <div className="space-y-3">
         <div className="flex items-center space-x-2 mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>Communication</span>
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>{t('configPanel.communication')}</span>
         </div>
 
         <div>
           <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
-            Baud Rate
+            {t('configPanel.baudRate')}
           </label>
           <div className="flex items-center space-x-2">
             {isCustomBaudRate ? (
@@ -114,7 +116,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
               disabled={disabled}
-              title={isCustomBaudRate ? "Switch to preset values" : "Enter custom baud rate"}
+              title={isCustomBaudRate ? t('configPanel.switchToPreset') : t('configPanel.enterCustomBaudRate')}
             >
               {isCustomBaudRate ? <X size={14} /> : <Edit3 size={14} />}
             </button>
@@ -125,13 +127,13 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
       {/* Parameters Group */}
       <div className="space-y-3">
         <div className="flex items-center space-x-2 mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>Parameters</span>
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>{t('configPanel.parameters')}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
-              Data Bits
+              {t('configPanel.dataBits')}
             </label>
             <select
               value={config.data_bits}
@@ -153,7 +155,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
           </div>
           <div>
             <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
-              Stop Bits
+              {t('configPanel.stopBits')}
             </label>
             <select
               value={config.stop_bits}
@@ -176,7 +178,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
 
         <div>
           <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
-            Parity
+            {t('configPanel.parity')}
           </label>
           <select
             value={config.parity}
@@ -190,17 +192,17 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
             } as React.CSSProperties}
             disabled={disabled}
           >
-            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>None</option>
-            <option value="Odd" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Odd</option>
-            <option value="Even" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Even</option>
-            <option value="Mark" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Mark</option>
-            <option value="Space" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Space</option>
+            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityNone')}</option>
+            <option value="Odd" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityOdd')}</option>
+            <option value="Even" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityEven')}</option>
+            <option value="Mark" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityMark')}</option>
+            <option value="Space" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.paritySpace')}</option>
           </select>
         </div>
 
         <div>
           <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
-            Flow Control
+            {t('configPanel.flowControl')}
           </label>
           <select
             value={config.flow_control}
@@ -214,15 +216,15 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
             } as React.CSSProperties}
             disabled={disabled}
           >
-            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>None</option>
-            <option value="Software" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Software (XON/XOFF)</option>
-            <option value="Hardware" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>Hardware (RTS/CTS)</option>
+            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.flowControlNone')}</option>
+            <option value="Software" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.flowControlSoftware')}</option>
+            <option value="Hardware" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.flowControlHardware')}</option>
           </select>
         </div>
 
         <div>
           <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
-            Timeout (ms)
+            {t('configPanel.timeout')}
           </label>
           <input
             type="number"
@@ -252,7 +254,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
           }}
         >
           <p className="text-xs" style={{ color: colors.warning }}>
-            Disconnect to modify configuration
+            {t('configPanel.disconnectToModify')}
           </p>
         </div>
       )}

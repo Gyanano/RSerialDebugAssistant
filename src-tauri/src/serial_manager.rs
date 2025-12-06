@@ -1,9 +1,12 @@
 use crate::types::*;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serialport::{SerialPort, SerialPortType};
 use std::collections::VecDeque;
+use std::fs::{File, OpenOptions, create_dir_all};
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -18,6 +21,14 @@ pub struct SerialManager {
     shutdown_flag: Arc<AtomicBool>,
     max_log_entries: Arc<Mutex<usize>>,
     frame_segmentation_config: Arc<Mutex<FrameSegmentationConfig>>,
+    // Recording file handles
+    text_file: Arc<Mutex<Option<File>>>,
+    raw_file: Arc<Mutex<Option<File>>>,
+    text_file_path: Arc<Mutex<Option<String>>>,
+    raw_file_path: Arc<Mutex<Option<String>>>,
+    log_directory: Arc<Mutex<String>>,
+    // Timezone offset in minutes for recording timestamps
+    timezone_offset_minutes: Arc<Mutex<i32>>,
 }
 
 #[derive(Debug, Default)]
@@ -29,6 +40,13 @@ struct SerialStats {
 
 impl SerialManager {
     pub fn new() -> Self {
+        // Default log directory - will be overridden by frontend settings
+        let default_log_dir = dirs::document_dir()
+            .map(|p| p.join("SerialLogs"))
+            .unwrap_or_else(|| PathBuf::from("./SerialLogs"))
+            .to_string_lossy()
+            .to_string();
+
         Self {
             current_port: None,
             config: None,
@@ -39,6 +57,12 @@ impl SerialManager {
             shutdown_flag: Arc::new(AtomicBool::new(false)),
             max_log_entries: Arc::new(Mutex::new(1000)),
             frame_segmentation_config: Arc::new(Mutex::new(FrameSegmentationConfig::default())),
+            text_file: Arc::new(Mutex::new(None)),
+            raw_file: Arc::new(Mutex::new(None)),
+            text_file_path: Arc::new(Mutex::new(None)),
+            raw_file_path: Arc::new(Mutex::new(None)),
+            log_directory: Arc::new(Mutex::new(default_log_dir)),
+            timezone_offset_minutes: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -126,6 +150,9 @@ impl SerialManager {
         let stats = Arc::clone(&self.stats);
         let max_log_entries = Arc::clone(&self.max_log_entries);
         let frame_segmentation_config = Arc::clone(&self.frame_segmentation_config);
+        let text_file = Arc::clone(&self.text_file);
+        let raw_file = Arc::clone(&self.raw_file);
+        let timezone_offset = Arc::clone(&self.timezone_offset_minutes);
         let port_name_clone = port_name.to_string();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
         let mut read_port = port.try_clone()?;
@@ -150,8 +177,16 @@ impl SerialManager {
 
                 match read_port.read(&mut buffer) {
                     Ok(bytes_read) if bytes_read > 0 => {
-                        accumulated_data.extend_from_slice(&buffer[..bytes_read]);
+                        let received_bytes = &buffer[..bytes_read];
+                        accumulated_data.extend_from_slice(received_bytes);
                         last_data_time = Instant::now();
+
+                        // Write to raw recording file (raw bytes, no framing)
+                        if let Ok(mut guard) = raw_file.lock() {
+                            if let Some(ref mut file) = *guard {
+                                let _ = file.write_all(received_bytes);
+                            }
+                        }
 
                         // Check for delimiter-based segmentation
                         if seg_config.mode == FrameSegmentationMode::Delimiter ||
@@ -163,6 +198,16 @@ impl SerialManager {
                                     let frame_end = pos + len;
                                     let frame_data: Vec<u8> = accumulated_data.drain(..frame_end).collect();
                                     let data_len = frame_data.len();
+
+                                    // Write to text recording file with timestamp and RX label
+                                    if let Ok(mut guard) = text_file.lock() {
+                                        if let Some(ref mut file) = *guard {
+                                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                                            let timestamp = format_timestamp_with_offset(tz_offset);
+                                            let text = String::from_utf8_lossy(&frame_data);
+                                            let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
+                                        }
+                                    }
 
                                     let log_entry = LogEntry {
                                         id: None,
@@ -194,6 +239,16 @@ impl SerialManager {
                                     let frame_end = pos + delimiter_bytes.len();
                                     let frame_data: Vec<u8> = accumulated_data.drain(..frame_end).collect();
                                     let data_len = frame_data.len();
+
+                                    // Write to text recording file with timestamp and RX label
+                                    if let Ok(mut guard) = text_file.lock() {
+                                        if let Some(ref mut file) = *guard {
+                                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                                            let timestamp = format_timestamp_with_offset(tz_offset);
+                                            let text = String::from_utf8_lossy(&frame_data);
+                                            let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
+                                        }
+                                    }
 
                                     let log_entry = LogEntry {
                                         id: None,
@@ -229,6 +284,17 @@ impl SerialManager {
 
                         if should_flush_timeout {
                             let data_len = accumulated_data.len();
+
+                            // Write to text recording file with timestamp and RX label
+                            if let Ok(mut guard) = text_file.lock() {
+                                if let Some(ref mut file) = *guard {
+                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                                    let timestamp = format_timestamp_with_offset(tz_offset);
+                                    let text = String::from_utf8_lossy(&accumulated_data);
+                                    let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
+                                }
+                            }
+
                             let log_entry = LogEntry {
                                 id: None,
                                 timestamp: Utc::now(),
@@ -265,6 +331,17 @@ impl SerialManager {
 
                         if should_flush_timeout {
                             let data_len = accumulated_data.len();
+
+                            // Write to text recording file with timestamp and RX label
+                            if let Ok(mut guard) = text_file.lock() {
+                                if let Some(ref mut file) = *guard {
+                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                                    let timestamp = format_timestamp_with_offset(tz_offset);
+                                    let text = String::from_utf8_lossy(&accumulated_data);
+                                    let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
+                                }
+                            }
+
                             let log_entry = LogEntry {
                                 id: None,
                                 timestamp: Utc::now(),
@@ -319,28 +396,31 @@ impl SerialManager {
         if self.is_connected {
             // Signal reading thread to stop
             self.shutdown_flag.store(true, Ordering::Relaxed);
-            
+
+            // Stop all recordings before disconnecting
+            self.stop_all_recordings();
+
             // Close the port first to force the reading thread to exit
             self.current_port = None;
-            
+
             // Wait longer for thread to properly clean up
             thread::sleep(Duration::from_millis(200));
-            
+
             self.is_connected = false;
-            
+
             if let Some(port_name) = &self.port_name {
                 // Don't add disconnection log to reduce clutter
                 info!("Disconnected from {}", port_name);
             }
-            
+
             self.port_name = None;
             self.config = None;
-            
+
             // Reset stats
             if let Ok(mut stats_guard) = self.stats.lock() {
                 *stats_guard = SerialStats::default();
             }
-            
+
             info!("Serial port disconnected");
         }
         Ok(())
@@ -353,7 +433,11 @@ impl SerialManager {
 
         if let Some(ref mut port) = self.current_port {
             port.write_all(&data)?;
-            
+
+            // Write to recording files (TX data)
+            self.write_to_text_file(&data, Direction::Sent);
+            self.write_to_raw_file(&data);
+
             // Update sent bytes statistics
             if let Ok(mut stats_guard) = self.stats.lock() {
                 stats_guard.bytes_sent += data.len() as u64;
@@ -406,25 +490,41 @@ impl SerialManager {
         }
     }
 
-    pub fn export_logs(&self, file_path: &str, format: ExportFormat) -> Result<()> {
+    pub fn export_logs(&self, file_path: &str, format: ExportFormat, timezone_offset_minutes: i32) -> Result<()> {
         use std::fs::File;
         use std::io::Write;
+        use std::path::Path;
+        use chrono::FixedOffset;
+
+        // Ensure the parent directory exists
+        let path = Path::new(file_path);
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                create_dir_all(parent)?;
+            }
+        }
 
         let logs = self.get_logs();
         let mut file = File::create(file_path)?;
 
+        // Create timezone offset for formatting
+        let offset_seconds = timezone_offset_minutes * 60;
+        let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+
         match format {
             ExportFormat::Txt => {
+                let now_with_tz = Utc::now().with_timezone(&tz_offset);
                 writeln!(file, "RSerial Debug Assistant - Log Export")?;
-                writeln!(file, "Generated: {}", Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))?;
+                writeln!(file, "Generated: {}", now_with_tz.format("%Y-%m-%d %H:%M:%S %z"))?;
                 writeln!(file, "{}", "=".repeat(60))?;
                 writeln!(file)?;
 
                 for log in logs {
+                    let timestamp_with_tz = log.timestamp.with_timezone(&tz_offset);
                     writeln!(
                         file,
                         "[{}] {}: {}",
-                        log.timestamp.format("%H:%M:%S%.3f"),
+                        timestamp_with_tz.format("%H:%M:%S%.3f"),
                         match log.direction {
                             Direction::Sent => "TX",
                             Direction::Received => "RX",
@@ -436,10 +536,11 @@ impl SerialManager {
             ExportFormat::Csv => {
                 writeln!(file, "timestamp,direction,port,data")?;
                 for log in logs {
+                    let timestamp_with_tz = log.timestamp.with_timezone(&tz_offset);
                     writeln!(
                         file,
                         "{},{:?},{},\"{}\"",
-                        log.timestamp.format("%Y-%m-%d %H:%M:%S%.3f"),
+                        timestamp_with_tz.format("%Y-%m-%d %H:%M:%S%.3f"),
                         log.direction,
                         log.port_name,
                         String::from_utf8_lossy(&log.data).replace("\"", "\"\"")
@@ -498,6 +599,200 @@ impl SerialManager {
             .map(|guard| guard.clone())
             .unwrap_or_default()
     }
+
+    // Recording methods
+
+    /// Set the log directory path (called from frontend settings)
+    pub fn set_log_directory(&self, path: String) {
+        if let Ok(mut guard) = self.log_directory.lock() {
+            *guard = path;
+        }
+    }
+
+    /// Get the current log directory path
+    pub fn get_log_directory(&self) -> String {
+        self.log_directory
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_else(|_| String::from("./SerialLogs"))
+    }
+
+    /// Set the timezone offset in minutes for recording timestamps
+    pub fn set_timezone_offset(&self, offset_minutes: i32) {
+        if let Ok(mut guard) = self.timezone_offset_minutes.lock() {
+            *guard = offset_minutes;
+        }
+    }
+
+    /// Generate a filename with port name and timestamp
+    fn generate_recording_filename(&self, extension: &str) -> Result<PathBuf> {
+        let log_dir = self.get_log_directory();
+        let dir_path = PathBuf::from(&log_dir);
+
+        // Create directory if it doesn't exist
+        if !dir_path.exists() {
+            create_dir_all(&dir_path)?;
+        }
+
+        let port_name = self.port_name.clone().unwrap_or_else(|| "UNKNOWN".to_string());
+        // Sanitize port name for filename (replace special characters)
+        let safe_port_name = port_name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+
+        let tz_offset = *self.timezone_offset_minutes.lock().unwrap_or_else(|e| e.into_inner());
+        let timestamp = format_date_for_filename_with_offset(tz_offset);
+        let filename = format!("{}_{}.{}", safe_port_name, timestamp, extension);
+
+        Ok(dir_path.join(filename))
+    }
+
+    /// Start text recording - creates a new text file and begins recording
+    pub fn start_text_recording(&self) -> Result<String> {
+        // Check if already recording
+        if let Ok(guard) = self.text_file.lock() {
+            if guard.is_some() {
+                return Err(anyhow!("Text recording is already active"));
+            }
+        }
+
+        let file_path = self.generate_recording_filename("txt")?;
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file_path)?;
+
+        let path_str = file_path.to_string_lossy().to_string();
+
+        if let Ok(mut guard) = self.text_file.lock() {
+            *guard = Some(file);
+        }
+        if let Ok(mut guard) = self.text_file_path.lock() {
+            *guard = Some(path_str.clone());
+        }
+
+        info!("Started text recording to: {}", path_str);
+        Ok(path_str)
+    }
+
+    /// Stop text recording - closes the file
+    pub fn stop_text_recording(&self) -> Result<()> {
+        if let Ok(mut guard) = self.text_file.lock() {
+            if let Some(mut file) = guard.take() {
+                file.flush()?;
+            }
+        }
+        if let Ok(mut guard) = self.text_file_path.lock() {
+            if let Some(path) = guard.take() {
+                info!("Stopped text recording: {}", path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Start raw binary recording - creates a new binary file and begins recording
+    pub fn start_raw_recording(&self) -> Result<String> {
+        // Check if already recording
+        if let Ok(guard) = self.raw_file.lock() {
+            if guard.is_some() {
+                return Err(anyhow!("Raw recording is already active"));
+            }
+        }
+
+        let file_path = self.generate_recording_filename("bin")?;
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file_path)?;
+
+        let path_str = file_path.to_string_lossy().to_string();
+
+        if let Ok(mut guard) = self.raw_file.lock() {
+            *guard = Some(file);
+        }
+        if let Ok(mut guard) = self.raw_file_path.lock() {
+            *guard = Some(path_str.clone());
+        }
+
+        info!("Started raw recording to: {}", path_str);
+        Ok(path_str)
+    }
+
+    /// Stop raw binary recording - closes the file
+    pub fn stop_raw_recording(&self) -> Result<()> {
+        if let Ok(mut guard) = self.raw_file.lock() {
+            if let Some(mut file) = guard.take() {
+                file.flush()?;
+            }
+        }
+        if let Ok(mut guard) = self.raw_file_path.lock() {
+            if let Some(path) = guard.take() {
+                info!("Stopped raw recording: {}", path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Get the current recording status
+    pub fn get_recording_status(&self) -> RecordingStatus {
+        let text_recording_active = self.text_file
+            .lock()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false);
+        let raw_recording_active = self.raw_file
+            .lock()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false);
+        let text_file_path = self.text_file_path
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or(None);
+        let raw_file_path = self.raw_file_path
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or(None);
+
+        RecordingStatus {
+            text_recording_active,
+            raw_recording_active,
+            text_file_path,
+            raw_file_path,
+        }
+    }
+
+    /// Write data to text recording file with timestamp, direction, and newline
+    pub fn write_to_text_file(&self, data: &[u8], direction: Direction) {
+        if let Ok(mut guard) = self.text_file.lock() {
+            if let Some(ref mut file) = *guard {
+                let tz_offset = *self.timezone_offset_minutes.lock().unwrap_or_else(|e| e.into_inner());
+                let timestamp = format_timestamp_with_offset(tz_offset);
+                let dir_label = match direction {
+                    Direction::Sent => "TX",
+                    Direction::Received => "RX",
+                };
+                let text = String::from_utf8_lossy(data);
+                // Write formatted line with timestamp, direction, content, and newline
+                if let Err(e) = writeln!(file, "[{}] {}: {}", timestamp, dir_label, text) {
+                    warn!("Error writing to text recording file: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Write data to raw binary recording file
+    pub fn write_to_raw_file(&self, data: &[u8]) {
+        if let Ok(mut guard) = self.raw_file.lock() {
+            if let Some(ref mut file) = *guard {
+                if let Err(e) = file.write_all(data) {
+                    warn!("Error writing to raw recording file: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Stop all recordings (called on disconnect)
+    pub fn stop_all_recordings(&self) {
+        let _ = self.stop_text_recording();
+        let _ = self.stop_raw_recording();
+    }
 }
 
 /// Find the position of a delimiter in the data buffer
@@ -530,4 +825,22 @@ fn find_any_newline(data: &[u8]) -> Option<(usize, usize)> {
         }
     }
     None
+}
+
+/// Format current UTC time with timezone offset applied
+fn format_timestamp_with_offset(offset_minutes: i32) -> String {
+    use chrono::FixedOffset;
+    let offset_seconds = offset_minutes * 60;
+    let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+    let now_with_tz = Utc::now().with_timezone(&tz_offset);
+    now_with_tz.format("%H:%M:%S%.3f").to_string()
+}
+
+/// Format a date for filenames with timezone offset applied
+fn format_date_for_filename_with_offset(offset_minutes: i32) -> String {
+    use chrono::FixedOffset;
+    let offset_seconds = offset_minutes * 60;
+    let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+    let now_with_tz = Utc::now().with_timezone(&tz_offset);
+    now_with_tz.format("%Y-%m-%d_%H-%M-%S").to_string()
 }

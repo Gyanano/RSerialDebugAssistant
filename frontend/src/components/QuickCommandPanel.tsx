@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Plus, Send, ChevronDown, Edit2, Check, X, Trash2, Play, Square, RefreshCw } from 'lucide-react';
 import { QuickCommand, QuickCommandList, LineEnding } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from '../i18n';
 
 const LOOP_INTERVAL_KEY = 'quickCommandLoopInterval';
 const DEFAULT_LOOP_INTERVAL = 1000;
@@ -45,6 +46,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   disabled,
 }) => {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const [isListDropdownOpen, setIsListDropdownOpen] = useState(false);
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -62,7 +64,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
 
   const currentList = lists.find(l => l.id === currentListId) || lists[0];
   const lineEndingOptions: { value: LineEnding; label: string }[] = [
-    { value: 'None', label: 'None' },
+    { value: 'None', label: t('quickCommand.endingNone') },
     { value: '\\r', label: '\\r' },
     { value: '\\n', label: '\\n' },
     { value: '\\r\\n', label: '\\r\\n' },
@@ -231,13 +233,13 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               onChange={handleSelectAll}
               className="w-3.5 h-3.5 rounded cursor-pointer"
               style={{ accentColor: colors.accent }}
-              title="Select all"
+              title={t('quickCommand.selectAll')}
             />
           </div>
           <div className="w-12 text-center">HEX</div>
-          <div className="flex-1 text-center">Command</div>
-          <div className="w-20 text-center">Ending</div>
-          <div className="w-12 text-center">Send</div>
+          <div className="flex-1 text-center">{t('quickCommand.command')}</div>
+          <div className="w-20 text-center">{t('quickCommand.ending')}</div>
+          <div className="w-12 text-center">{t('quickCommand.send')}</div>
         </div>
 
         {/* Command Rows */}
@@ -283,7 +285,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                 type="text"
                 value={command.content}
                 onChange={(e) => handleCommandChange(index, 'content', e.target.value)}
-                placeholder={command.isHex ? 'e.g., 48 65 6C 6C 6F' : 'Enter command...'}
+                placeholder={command.isHex ? t('quickCommand.hexPlaceholder') : t('quickCommand.textPlaceholder')}
                 className="w-full px-2 py-1 text-sm font-mono rounded focus:outline-none focus:ring-1"
                 style={{
                   backgroundColor: colors.bgInput,
@@ -328,7 +330,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   opacity: disabled || !command.content.trim() ? 0.5 : 1,
                   cursor: disabled || !command.content.trim() ? 'not-allowed' : 'pointer'
                 }}
-                title={`Send command #${index + 1}`}
+                title={`${t('quickCommand.sendCommand')} #${index + 1}`}
               >
                 {index + 1}
               </button>
@@ -349,7 +351,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               }}
             >
               <Plus size={14} />
-              <span>Add More ({currentList.commands.length}/{MAX_COMMANDS})</span>
+              <span>{t('quickCommand.addMore')} ({currentList.commands.length}/{MAX_COMMANDS})</span>
             </button>
           </div>
         )}
@@ -448,7 +450,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                             }}
                             className="p-1 rounded hover:bg-opacity-20"
                             style={{ color: colors.textTertiary }}
-                            title="Rename"
+                            title={t('quickCommand.rename')}
                           >
                             <Edit2 size={12} />
                           </button>
@@ -460,7 +462,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                               }}
                               className="p-1 rounded hover:bg-opacity-20"
                               style={{ color: colors.error }}
-                              title="Delete"
+                              title={t('quickCommand.delete')}
                             >
                               <Trash2 size={12} />
                             </button>
@@ -484,7 +486,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <Plus size={14} />
-                <span className="text-sm">New List</span>
+                <span className="text-sm">{t('quickCommand.newList')}</span>
               </div>
             </div>
           )}
@@ -510,7 +512,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                 '--tw-ring-color': colors.accent,
                 opacity: isLooping ? 0.5 : 1
               } as React.CSSProperties}
-              title="Loop interval in milliseconds"
+              title={t('quickCommand.loopIntervalTitle')}
             />
             <span className="text-xs" style={{ color: colors.textTertiary }}>ms</span>
           </div>
@@ -525,7 +527,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               }}
             >
               <RefreshCw size={12} className="animate-spin" />
-              <span>Loop: {iterationCount}</span>
+              <span>{t('quickCommand.loop')}: {iterationCount}</span>
             </div>
           )}
 
@@ -541,7 +543,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               }}
             >
               <Square size={14} />
-              <span>Stop</span>
+              <span>{t('quickCommand.stop')}</span>
             </button>
           ) : (
             <button
@@ -554,10 +556,10 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                 opacity: disabled || selectedCount === 0 ? 0.5 : 1,
                 cursor: disabled || selectedCount === 0 ? 'not-allowed' : 'pointer'
               }}
-              title="Send selected commands repeatedly at interval"
+              title={t('quickCommand.loopSendTitle')}
             >
               <RefreshCw size={14} />
-              <span>Loop Send</span>
+              <span>{t('quickCommand.loopSend')}</span>
             </button>
           )}
 
@@ -574,7 +576,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
             }}
           >
             <Play size={14} />
-            <span>List Send {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
+            <span>{t('quickCommand.listSend')} {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
           </button>
         </div>
       </div>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Activity, Clock, Settings2 } from 'lucide-react';
 import { ConnectionStatus, SerialConfig } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from '../i18n';
 
 interface StatusBarProps {
   connectionStatus: ConnectionStatus;
@@ -11,6 +12,7 @@ interface StatusBarProps {
 
 const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, config }) => {
   const { colors } = useTheme();
+  const { t } = useTranslation();
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -21,12 +23,12 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
   };
 
   const formatConnectionTime = (timestamp: string | null) => {
-    if (!timestamp) return 'Not connected';
-    
+    if (!timestamp) return t('statusBar.notConnected');
+
     const now = new Date();
     const connectionTime = new Date(timestamp);
     const diff = Math.floor((now.getTime() - connectionTime.getTime()) / 1000);
-    
+
     if (diff < 60) return `${diff}s`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;
     const hours = Math.floor(diff / 3600);
@@ -36,11 +38,11 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
 
   const getStatusText = () => {
     if (connectionStatus.is_connected) {
-      return `Connected to ${connectionStatus.port_name}`;
+      return `${t('statusBar.connectedTo')} ${connectionStatus.port_name}`;
     } else if (selectedPort) {
-      return `Ready to connect to ${selectedPort}`;
+      return `${t('statusBar.readyToConnect')} ${selectedPort}`;
     } else {
-      return 'No port selected';
+      return t('statusBar.noPortSelected');
     }
   };
 
@@ -107,7 +109,7 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
       <div className="flex items-center space-x-3" style={{ color: colors.textTertiary }}>
         <span className="font-mono">{getConfigSummary()}</span>
         <div className="w-px h-3" style={{ backgroundColor: colors.border }}></div>
-        <span>v1.0.1</span>
+        <span>v1.2.0</span>
       </div>
     </div>
   );

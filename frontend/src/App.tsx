@@ -9,7 +9,9 @@ import StatusBar from './components/StatusBar';
 import SettingsModal from './components/SettingsModal';
 import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, TextEncoding, FrameSegmentationConfig } from './types';
 import { useTheme } from './contexts/ThemeContext';
+import { useTranslation } from './i18n';
 import { appendChecksum } from './utils/checksum';
+import { loadTimezone, formatDateForFilename, getSystemTimezoneOffset, parseUtcOffset } from './utils/timezone';
 
 const QUICK_COMMANDS_STORAGE_KEY = 'serial-debug-quick-commands';
 const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
@@ -100,6 +102,7 @@ const getSavedLogViewerHeight = (): number | null => {
 
 function App() {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
   const [selectedPort, setSelectedPort] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
@@ -385,6 +388,20 @@ function App() {
     };
     initFrameSegmentation();
 
+    // Initialize timezone offset for backend recording timestamps
+    const initTimezoneOffset = async () => {
+      try {
+        const tz = loadTimezone();
+        const offsetMinutes = tz === 'System'
+          ? Math.round(getSystemTimezoneOffset() * 60)  // Convert hours to minutes
+          : Math.round(parseUtcOffset(tz) * 60);
+        await invoke('set_timezone_offset', { offsetMinutes });
+      } catch (error) {
+        console.error('Failed to initialize timezone offset:', error);
+      }
+    };
+    initTimezoneOffset();
+
     // Set up intervals for updating status, logs, and ports
     const statusInterval = setInterval(updateStatus, 1000);
     const logsInterval = setInterval(updateLogs, 100); // More frequent log updates
@@ -507,7 +524,7 @@ function App() {
       }
 
       // Don't clear the input - keep the content for re-sending
-      await updateLogs();
+      // Note: Logs are updated automatically via polling interval, no need to await here
     } catch (error) {
       console.error('Failed to send data:', error);
       alert(`Failed to send data: ${error}`);
@@ -525,20 +542,49 @@ function App() {
 
   const handleExportLogs = async () => {
     try {
-      // In a real app, you'd use a file dialog here
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `serial_logs_${timestamp}.txt`;
+      // Get the log directory from backend (which has the correct platform-specific path)
+      const logPath = await invoke<string>('get_log_directory');
 
+      // Format timestamp for filename using configured timezone
+      const timezone = loadTimezone();
+      const timestamp = formatDateForFilename(new Date(), timezone);
+
+      // Use "noport" if no port is connected, otherwise use the selected port name
+      // Sanitize port name for filename (replace special characters)
+      const portName = (selectedPort || 'noport').replace(/[\/\\:*?"<>|]/g, '_');
+
+      // Use "export_" prefix to distinguish from auto-saved files
+      const filename = `export_${portName}_${timestamp}.txt`;
+
+      // Construct full path
+      const fullPath = `${logPath}/${filename}`;
+
+      // Pass timezone offset to backend for formatting timestamps in the exported file
       await invoke('export_logs', {
-        filePath: filename,
+        filePath: fullPath,
         format: 'Txt',
+        timezoneOffsetMinutes: timezone === 'System' ? -new Date().getTimezoneOffset() : getTimezoneOffsetMinutes(timezone),
       });
 
-      alert(`Logs exported to ${filename}`);
+      alert(`Logs exported to ${fullPath}`);
     } catch (error) {
       console.error('Failed to export logs:', error);
       alert(`Failed to export logs: ${error}`);
     }
+  };
+
+  // Helper function to convert timezone string to offset in minutes
+  const getTimezoneOffsetMinutes = (timezone: string): number => {
+    if (timezone === 'UTC') return 0;
+
+    const match = timezone.match(/^UTC([+-])(\d{1,2})(?::(\d{2}))?$/);
+    if (!match) return 0;
+
+    const sign = match[1] === '+' ? 1 : -1;
+    const hours = parseInt(match[2], 10);
+    const minutes = match[3] ? parseInt(match[3], 10) : 0;
+
+    return sign * (hours * 60 + minutes);
   };
 
   // Helper function to append line ending to data
@@ -575,7 +621,7 @@ function App() {
         encoding: !isHex ? textEncoding : undefined,
       });
 
-      await updateLogs();
+      // Note: Logs are updated automatically via polling interval
     } catch (error) {
       console.error('Failed to send quick command:', error);
       alert(`Failed to send: ${error}`);
@@ -603,7 +649,7 @@ function App() {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
 
-      await updateLogs();
+      // Note: Logs are updated automatically via polling interval
     } catch (error) {
       console.error('Failed to send selected commands:', error);
       alert(`Failed to send: ${error}`);
@@ -643,7 +689,7 @@ function App() {
                   e.currentTarget.style.color = colors.textSecondary;
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
-                title="Expand Sidebar"
+                title={t('sidebar.expandSidebar')}
               >
                 <PanelLeft size={20} />
               </button>
@@ -653,8 +699,8 @@ function App() {
               {/* Header */}
               <div className="p-4 pt-6 flex items-start justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-base font-bold tracking-wide truncate" style={{ color: colors.textPrimary }}>RSerial Debug Assistant</h1>
-                  <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>Professional Tool</p>
+                  <h1 className="text-base font-bold tracking-wide truncate" style={{ color: colors.textPrimary }}>{t('app.title')}</h1>
+                  <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('app.subtitle')}</p>
                 </div>
                 <div className="flex items-center gap-1 ml-2">
                   <button
@@ -672,7 +718,7 @@ function App() {
                       e.currentTarget.style.color = colors.textSecondary;
                       e.currentTarget.style.backgroundColor = 'transparent';
                     }}
-                    title="Collapse Sidebar"
+                    title={t('sidebar.collapseSidebar')}
                   >
                     <PanelLeftClose size={16} />
                   </button>
@@ -691,7 +737,7 @@ function App() {
                       e.currentTarget.style.color = colors.textSecondary;
                       e.currentTarget.style.backgroundColor = 'transparent';
                     }}
-                    title="Settings"
+                    title={t('sidebar.settings')}
                   >
                     <Settings size={16} />
                   </button>

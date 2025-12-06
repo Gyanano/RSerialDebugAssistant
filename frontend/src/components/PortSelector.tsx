@@ -2,6 +2,7 @@ import React from 'react';
 import { RefreshCw, Plug, PlugZap } from 'lucide-react';
 import { SerialPortInfo, ConnectionStatus } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from '../i18n';
 
 interface PortSelectorProps {
   ports: SerialPortInfo[];
@@ -25,6 +26,7 @@ const PortSelector: React.FC<PortSelectorProps> = ({
   isLoading,
 }) => {
   const { colors } = useTheme();
+  const { t } = useTranslation();
 
   const handlePortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onPortSelect(e.target.value);
@@ -47,9 +49,9 @@ const PortSelector: React.FC<PortSelectorProps> = ({
 
   const getConnectionButtonText = () => {
     if (isLoading) {
-      return connectionStatus.is_connected ? 'Disconnecting...' : 'Connecting...';
+      return connectionStatus.is_connected ? `${t('portSelector.disconnect')}...` : `${t('portSelector.connect')}...`;
     }
-    return connectionStatus.is_connected ? 'Disconnect' : 'Connect';
+    return connectionStatus.is_connected ? t('portSelector.disconnect') : t('portSelector.connect');
   };
 
   const getConnectionButtonClass = () => {
@@ -62,7 +64,7 @@ const PortSelector: React.FC<PortSelectorProps> = ({
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center mb-1">
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>Connection</span>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>{t('portSelector.connection')}</span>
         <button
           onClick={onRefresh}
           className="p-1 rounded transition-colors"
@@ -76,7 +78,7 @@ const PortSelector: React.FC<PortSelectorProps> = ({
             e.currentTarget.style.color = colors.textSecondary;
           }}
           disabled={isLoading}
-          title="Refresh"
+          title={t('portSelector.refresh')}
         >
           <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
         </button>
@@ -96,11 +98,11 @@ const PortSelector: React.FC<PortSelectorProps> = ({
           disabled={connectionStatus.is_connected || isLoading || ports.length === 0}
         >
           {ports.length === 0 ? (
-            <option value="" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>No ports available</option>
+            <option value="" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('portSelector.noPortsAvailable')}</option>
           ) : (
             ports.map((port) => (
               <option key={port.port_name} value={port.port_name} style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>
-                {port.port_name} - {port.description || 'Unknown Device'}
+                {port.port_name} - {port.description || t('portSelector.unknownDevice')}
               </option>
             ))
           )}
@@ -130,7 +132,7 @@ const PortSelector: React.FC<PortSelectorProps> = ({
         >
           {getStatusIndicator()}
           <span className="text-xs" style={{ color: colors.textSecondary }}>
-            {connectionStatus.is_connected ? 'Online' : 'Offline'}
+            {connectionStatus.is_connected ? t('portSelector.online') : t('portSelector.offline')}
           </span>
         </div>
       </div>
@@ -140,22 +142,22 @@ const PortSelector: React.FC<PortSelectorProps> = ({
           className="mt-2 p-3 rounded-[6px]"
           style={{ backgroundColor: colors.buttonSecondaryBg, border: `1px solid ${colors.borderLight}` }}
         >
-          <h4 className="font-medium text-xs mb-2" style={{ color: colors.textSecondary }}>Port Information</h4>
+          <h4 className="font-medium text-xs mb-2" style={{ color: colors.textSecondary }}>{t('portSelector.portInformation')}</h4>
           {(() => {
             const portInfo = ports.find(p => p.port_name === selectedPort);
             if (!portInfo) return null;
 
             return (
               <div className="space-y-1 text-xs" style={{ color: colors.textTertiary }}>
-                <div>Type: {portInfo.port_type}</div>
+                <div>{t('portSelector.type')}: {portInfo.port_type}</div>
                 {portInfo.manufacturer && (
-                  <div>Manufacturer: {portInfo.manufacturer}</div>
+                  <div>{t('portSelector.manufacturer')}: {portInfo.manufacturer}</div>
                 )}
                 {portInfo.product && (
-                  <div>Product: {portInfo.product}</div>
+                  <div>{t('portSelector.product')}: {portInfo.product}</div>
                 )}
                 {portInfo.serial_number && (
-                  <div>Serial: {portInfo.serial_number}</div>
+                  <div>{t('portSelector.serial')}: {portInfo.serial_number}</div>
                 )}
                 {portInfo.vid && portInfo.pid && (
                   <div>VID:PID: {portInfo.vid.toString(16).toUpperCase()}:{portInfo.pid.toString(16).toUpperCase()}</div>

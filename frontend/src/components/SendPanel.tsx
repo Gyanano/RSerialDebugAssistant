@@ -4,6 +4,7 @@ import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickComman
 import ToggleSwitch from './ToggleSwitch';
 import QuickCommandPanel from './QuickCommandPanel';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from '../i18n';
 import { getChecksumLength } from '../utils/checksum';
 
 type SendMode = 'normal' | 'quickCommand';
@@ -111,6 +112,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
   onMinHeightChange,
 }) => {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sendMode, setSendMode] = useState<SendMode>('normal');
   const [isScheduledEnabled, setIsScheduledEnabled] = useState(false);
@@ -247,9 +249,9 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
   const getPlaceholderText = () => {
     if (format === 'Text') {
-      return 'Type your message here... (Ctrl+Enter to send)';
+      return t('sendPanel.placeholderText');
     } else {
-      return 'Enter hex data (e.g., 48 65 6C 6C 6F or 48656C6C6F)...';
+      return t('sendPanel.placeholderHex');
     }
   };
 
@@ -278,12 +280,12 @@ const SendPanel: React.FC<SendPanelProps> = ({
   };
 
   const commonHexValues = [
-    { label: 'CR', value: '0D', description: 'Carriage Return' },
-    { label: 'LF', value: '0A', description: 'Line Feed' },
-    { label: 'CRLF', value: '0D 0A', description: 'CR + LF' },
-    { label: 'NULL', value: '00', description: 'Null byte' },
-    { label: 'ESC', value: '1B', description: 'Escape' },
-    { label: 'SPACE', value: '20', description: 'Space character' },
+    { label: 'CR', value: '0D', descKey: 'sendPanel.carriageReturn' },
+    { label: 'LF', value: '0A', descKey: 'sendPanel.lineFeed' },
+    { label: 'CRLF', value: '0D 0A', descKey: 'sendPanel.crLf' },
+    { label: 'NULL', value: '00', descKey: 'sendPanel.nullByte' },
+    { label: 'ESC', value: '1B', descKey: 'sendPanel.escape' },
+    { label: 'SPACE', value: '20', descKey: 'sendPanel.spaceChar' },
   ];
 
   return (
@@ -297,7 +299,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
           <div className="flex items-center space-x-2" style={{ color: colors.textSecondary }}>
             <Send size={14} style={{ color: colors.textTertiary }} />
             <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.textPrimary }}>
-              {sendMode === 'normal' ? 'Payload' : 'Quick Commands'}
+              {sendMode === 'normal' ? t('sendPanel.payload') : t('sendPanel.quickCommands')}
             </span>
           </div>
 
@@ -316,7 +318,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
               }}
             >
               <FileText size={12} />
-              <span>Normal</span>
+              <span>{t('sendPanel.normal')}</span>
             </button>
             <button
               onClick={() => setSendMode('quickCommand')}
@@ -328,7 +330,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
               }}
             >
               <List size={12} />
-              <span>Quick</span>
+              <span>{t('sendPanel.quick')}</span>
             </button>
           </div>
         </div>
@@ -349,7 +351,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   color: checksumConfig.type !== 'None' ? '#ffffff' : colors.textSecondary
                 }}
                 disabled={!isConnected}
-                title="Checksum algorithm"
+                title={t('sendPanel.checksumAlgorithm')}
               >
                 {checksumTypes.map((type) => (
                   <option key={type} value={type} style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>
@@ -362,7 +364,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   onClick={() => setIsChecksumExpanded(!isChecksumExpanded)}
                   className="p-0.5 rounded transition-colors"
                   style={{ color: colors.textSecondary }}
-                  title={isChecksumExpanded ? 'Hide checksum options' : 'Show checksum options'}
+                  title={isChecksumExpanded ? t('sendPanel.hideChecksumOptions') : t('sendPanel.showChecksumOptions')}
                 >
                   {isChecksumExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                 </button>
@@ -412,9 +414,9 @@ const SendPanel: React.FC<SendPanelProps> = ({
               className="px-4 py-2 flex items-center space-x-4"
               style={{ borderBottom: `1px solid ${colors.borderLight}`, backgroundColor: colors.bgMain }}
             >
-              <span className="text-xs" style={{ color: colors.textTertiary }}>Range:</span>
+              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('sendPanel.range')}:</span>
               <div className="flex items-center space-x-2">
-                <span className="text-xs" style={{ color: colors.textSecondary }}>Start</span>
+                <span className="text-xs" style={{ color: colors.textSecondary }}>{t('sendPanel.start')}</span>
                 <input
                   type="number"
                   value={checksumConfig.startIndex}
@@ -427,11 +429,11 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   }}
                   min="0"
                   disabled={!isConnected}
-                  title="Start index (0 = first byte)"
+                  title={t('sendPanel.startIndexTitle')}
                 />
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-xs" style={{ color: colors.textSecondary }}>End</span>
+                <span className="text-xs" style={{ color: colors.textSecondary }}>{t('sendPanel.end')}</span>
                 <input
                   type="number"
                   value={checksumConfig.endIndex}
@@ -444,11 +446,11 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   }}
                   max="0"
                   disabled={!isConnected}
-                  title="End index (0 or -1 = last byte, -2 = second to last)"
+                  title={t('sendPanel.endIndexTitle')}
                 />
               </div>
               <span className="text-xs" style={{ color: colors.textTertiary }}>
-                (0/-1=last, -2=2nd last...)
+                {t('sendPanel.indexHint')}
               </span>
             </div>
           )}
@@ -478,9 +480,9 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 <div className="flex items-center justify-between mt-2 text-xs flex-shrink-0" style={{ color: colors.textTertiary }}>
                   <div className="flex items-center space-x-4">
                     {format === 'Text' && (
-                      <span>Characters: {value.length}</span>
+                      <span>{t('sendPanel.characters')}: {value.length}</span>
                     )}
-                    <span>Bytes: {getByteCount()}</span>
+                    <span>{t('sendPanel.bytes')}: {getByteCount()}</span>
                     {checksumConfig.type !== 'None' && (
                       <span style={{ color: colors.accent }}>
                         +{getChecksumLength(checksumConfig.type)} ({checksumConfig.type}) = {getTotalByteCount()}
@@ -503,7 +505,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                     cursor: isNormalSendDisabled ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  <span className="text-sm">{isScheduledEnabled ? 'Scheduled Active' : 'Send'}</span>
+                  <span className="text-sm">{isScheduledEnabled ? t('sendPanel.scheduledActive') : t('sendPanel.send')}</span>
                 </button>
 
                 <div
@@ -511,12 +513,12 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>Cycle (ms)</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('sendPanel.cycle')}</span>
                     <ToggleSwitch
                       checked={isScheduledEnabled}
                       onChange={handleScheduledToggle}
                       disabled={!isConnected}
-                      title={isScheduledEnabled ? 'Stop scheduled sending' : 'Start scheduled sending'}
+                      title={isScheduledEnabled ? t('sendPanel.stopScheduled') : t('sendPanel.startScheduled')}
                     />
                   </div>
                   <input
@@ -533,7 +535,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                     max="60000"
                     step="100"
                     disabled={!isConnected || isScheduledRunning}
-                    title="Send interval in milliseconds"
+                    title={t('sendPanel.intervalTitle')}
                   />
                 </div>
               </div>
@@ -546,7 +548,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 style={{ borderTop: `1px solid ${colors.borderLight}` }}
               >
                 <span className="text-xs font-medium whitespace-nowrap" style={{ color: colors.textTertiary }}>
-                  Quick Insert:
+                  {t('sendPanel.quickInsert')}:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {commonHexValues.map((item) => (
@@ -562,7 +564,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
                       disabled={!isConnected}
-                      title={item.description}
+                      title={t(item.descKey)}
                     >
                       {item.label}
                     </button>

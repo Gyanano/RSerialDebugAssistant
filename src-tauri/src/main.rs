@@ -124,9 +124,10 @@ async fn export_logs(
     state: State<'_, AppState>,
     file_path: String,
     format: ExportFormat,
+    timezone_offset_minutes: Option<i32>,
 ) -> Result<(), String> {
     let manager = state.serial_manager.lock().unwrap();
-    manager.export_logs(&file_path, format)
+    manager.export_logs(&file_path, format, timezone_offset_minutes.unwrap_or(0))
         .map_err(|e| e.to_string())
 }
 
@@ -187,6 +188,58 @@ async fn get_frame_segmentation(state: State<'_, AppState>) -> Result<FrameSegme
     Ok(manager.get_frame_segmentation_config())
 }
 
+// Recording commands
+
+#[tauri::command]
+async fn set_log_directory(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_log_directory(path);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_log_directory(state: State<'_, AppState>) -> Result<String, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    Ok(manager.get_log_directory())
+}
+
+#[tauri::command]
+async fn set_timezone_offset(state: State<'_, AppState>, offset_minutes: i32) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_timezone_offset(offset_minutes);
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_text_recording(state: State<'_, AppState>) -> Result<String, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.start_text_recording().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn stop_text_recording(state: State<'_, AppState>) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.stop_text_recording().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn start_raw_recording(state: State<'_, AppState>) -> Result<String, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.start_raw_recording().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn stop_raw_recording(state: State<'_, AppState>) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.stop_raw_recording().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_recording_status(state: State<'_, AppState>) -> Result<RecordingStatus, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    Ok(manager.get_recording_status())
+}
+
 fn main() {
     env_logger::init();
 
@@ -208,7 +261,15 @@ fn main() {
             set_log_limit,
             get_log_limit,
             set_frame_segmentation,
-            get_frame_segmentation
+            get_frame_segmentation,
+            set_log_directory,
+            get_log_directory,
+            set_timezone_offset,
+            start_text_recording,
+            stop_text_recording,
+            start_raw_recording,
+            stop_raw_recording,
+            get_recording_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

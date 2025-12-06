@@ -166,3 +166,12 @@ impl Default for FrameSegmentationConfig {
         }
     }
 }
+
+// Recording status types
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RecordingStatus {
+    pub text_recording_active: bool,
+    pub raw_recording_active: bool,
+    pub text_file_path: Option<String>,
+    pub raw_file_path: Option<String>,
+}
