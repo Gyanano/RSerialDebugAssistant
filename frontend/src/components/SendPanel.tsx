@@ -6,6 +6,7 @@ import QuickCommandPanel from './QuickCommandPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { getChecksumLength } from '../utils/checksum';
+import { getTextEncoding, textToHex as encodeTextToHex, hexToText as decodeHexToText } from '../utils/encoding';
 
 type SendMode = 'normal' | 'quickCommand';
 
@@ -16,45 +17,6 @@ export const SEND_PANEL_MIN_HEIGHTS = {
   normalHex: 220,            // Header + textarea (min) + controls + quick insert row
   normalHexChecksum: 256,    // + checksum expanded row
   quickCommand: 280,         // Header + quick command panel
-};
-
-// Convert text string to hex string (with spaces every 2 characters)
-const textToHex = (text: string): string => {
-  if (!text) return '';
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(text);
-  const hexPairs: string[] = [];
-  for (const byte of bytes) {
-    hexPairs.push(byte.toString(16).toUpperCase().padStart(2, '0'));
-  }
-  return hexPairs.join(' ');
-};
-
-// Convert hex string to text string
-const hexToText = (hex: string): string => {
-  if (!hex) return '';
-  // Remove all spaces and validate
-  const cleanHex = hex.replace(/\s/g, '');
-  if (cleanHex.length === 0) return '';
-
-  // Ensure even number of characters
-  const paddedHex = cleanHex.length % 2 === 0 ? cleanHex : cleanHex + '0';
-
-  const bytes: number[] = [];
-  for (let i = 0; i < paddedHex.length; i += 2) {
-    const byte = parseInt(paddedHex.substr(i, 2), 16);
-    if (!isNaN(byte)) {
-      bytes.push(byte);
-    }
-  }
-
-  try {
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    return decoder.decode(new Uint8Array(bytes));
-  } catch {
-    // If decoding fails, return empty string
-    return '';
-  }
 };
 
 // Format hex input: filter non-hex chars, add spaces every 2 chars
@@ -120,9 +82,10 @@ const SendPanel: React.FC<SendPanelProps> = ({
   const [isScheduledRunning, setIsScheduledRunning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isChecksumExpanded, setIsChecksumExpanded] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
 
   // Calculate disabled state for normal mode (depends on both connection AND content)
-  const isNormalSendDisabled = !isConnected || !value.trim() || isScheduledEnabled;
+  const isNormalSendDisabled = !isConnected || !value.trim() || isScheduledEnabled || isConverting;
   // Calculate disabled state for quick mode (depends ONLY on connection)
   const isQuickModeDisabled = !isConnected;
 
@@ -143,21 +106,30 @@ const SendPanel: React.FC<SendPanelProps> = ({
     }
   };
 
-  // Handle format change with automatic conversion
-  const handleFormatChange = useCallback((newFormat: DataFormat) => {
-    if (newFormat === format) return;
+  // Handle format change with automatic conversion using configured encoding
+  const handleFormatChange = useCallback(async (newFormat: DataFormat) => {
+    if (newFormat === format || isConverting) return;
 
-    if (newFormat === 'Hex') {
-      // Convert text to hex
-      const hexValue = textToHex(value);
-      onChange(hexValue);
-    } else {
-      // Convert hex to text
-      const textValue = hexToText(value);
-      onChange(textValue);
+    setIsConverting(true);
+    try {
+      // Read encoding fresh from localStorage to ensure we use the latest setting
+      const currentEncoding = getTextEncoding();
+      if (newFormat === 'Hex') {
+        // Convert text to hex using configured encoding
+        const hexValue = await encodeTextToHex(value, currentEncoding);
+        onChange(hexValue);
+      } else {
+        // Convert hex to text using configured encoding
+        const textValue = await decodeHexToText(value, currentEncoding);
+        onChange(textValue);
+      }
+      onFormatChange(newFormat);
+    } catch (error) {
+      console.error('Error converting format:', error);
+    } finally {
+      setIsConverting(false);
     }
-    onFormatChange(newFormat);
-  }, [format, value, onChange, onFormatChange]);
+  }, [format, value, onChange, onFormatChange, isConverting]);
 
   // Handle input change with hex validation and auto-spacing
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {

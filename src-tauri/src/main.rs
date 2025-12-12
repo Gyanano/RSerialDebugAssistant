@@ -240,6 +240,39 @@ async fn get_recording_status(state: State<'_, AppState>) -> Result<RecordingSta
     Ok(manager.get_recording_status())
 }
 
+/// Encode text string to bytes using the specified encoding
+#[tauri::command]
+async fn encode_text(text: String, encoding: TextEncoding) -> Result<Vec<u8>, String> {
+    match encoding {
+        TextEncoding::Utf8 => Ok(text.into_bytes()),
+        TextEncoding::Gbk => {
+            let (encoded, _, had_errors) = encoding_rs::GBK.encode(&text);
+            if had_errors {
+                log::warn!("Some characters could not be encoded to GBK");
+            }
+            Ok(encoded.into_owned())
+        }
+    }
+}
+
+/// Decode bytes to text string using the specified encoding
+#[tauri::command]
+async fn decode_bytes(bytes: Vec<u8>, encoding: TextEncoding) -> Result<String, String> {
+    match encoding {
+        TextEncoding::Utf8 => {
+            String::from_utf8(bytes)
+                .map_err(|e| format!("Invalid UTF-8 sequence: {}", e))
+        }
+        TextEncoding::Gbk => {
+            let (decoded, _, had_errors) = encoding_rs::GBK.decode(&bytes);
+            if had_errors {
+                log::warn!("Some bytes could not be decoded from GBK");
+            }
+            Ok(decoded.into_owned())
+        }
+    }
+}
+
 fn main() {
     env_logger::init();
 
@@ -269,7 +302,9 @@ fn main() {
             stop_text_recording,
             start_raw_recording,
             stop_raw_recording,
-            get_recording_status
+            get_recording_status,
+            encode_text,
+            decode_bytes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
