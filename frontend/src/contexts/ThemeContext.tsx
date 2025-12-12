@@ -27,6 +27,7 @@ interface ThemeColors {
   accentHover: string;
   success: string;
   danger: string;
+  error: string;
   warning: string;
   
   // Component-specific
@@ -57,8 +58,9 @@ const lightTheme: ThemeColors = {
   accentHover: '#0071e3',
   success: '#30D158',
   danger: '#FF453A',
+  error: '#DC2626',
   warning: '#FFD60A',
-  
+
   buttonSecondaryBg: 'rgba(0, 0, 0, 0.05)',
   buttonSecondaryHover: 'rgba(0, 0, 0, 0.1)',
   logSentBg: 'rgba(10, 132, 255, 0.05)',
@@ -86,8 +88,9 @@ const darkTheme: ThemeColors = {
   accentHover: '#0071e3',
   success: '#30D158',
   danger: '#FF453A',
+  error: '#DC2626',
   warning: '#FFD60A',
-  
+
   buttonSecondaryBg: 'rgba(255, 255, 255, 0.05)',
   buttonSecondaryHover: 'rgba(255, 255, 255, 0.1)',
   logSentBg: 'rgba(10, 132, 255, 0.05)',

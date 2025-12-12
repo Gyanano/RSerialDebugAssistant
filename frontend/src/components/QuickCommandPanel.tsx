@@ -344,7 +344,6 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   color: colors.textPrimary,
                   '--tw-ring-color': colors.accent
                 } as React.CSSProperties}
-                disabled={disabled}
                 title={t('quickCommand.namePlaceholder')}
               />
             </div>
@@ -360,7 +359,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   border: `1px solid ${command.isHex ? colors.accent : colors.border}`,
                   opacity: convertingIndex === index ? 0.5 : 1
                 }}
-                disabled={disabled || convertingIndex === index}
+                disabled={convertingIndex === index}
               >
                 HEX
               </button>
@@ -381,7 +380,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   '--tw-ring-color': colors.accent,
                   opacity: convertingIndex === index ? 0.5 : 1
                 } as React.CSSProperties}
-                disabled={disabled || convertingIndex === index}
+                disabled={convertingIndex === index}
               />
             </div>
 
@@ -396,7 +395,6 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   border: `1px solid ${colors.border}`,
                   color: colors.textSecondary
                 }}
-                disabled={disabled}
               >
                 {lineEndingOptions.map(opt => (
                   <option key={opt.value} value={opt.value} style={{ backgroundColor: colors.bgSidebar }}>

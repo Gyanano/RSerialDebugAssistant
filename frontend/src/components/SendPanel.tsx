@@ -1,11 +1,11 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Send, Type, Hash, Clock, Play, Pause, Shield, ChevronDown, ChevronUp, List, FileText } from 'lucide-react';
 import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding } from '../types';
 import ToggleSwitch from './ToggleSwitch';
 import QuickCommandPanel from './QuickCommandPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
-import { getChecksumLength } from '../utils/checksum';
+import { getChecksumLength, calculateChecksum } from '../utils/checksum';
 import { getTextEncoding, textToHex as encodeTextToHex, hexToText as decodeHexToText } from '../utils/encoding';
 
 type SendMode = 'normal' | 'quickCommand';
@@ -242,6 +242,45 @@ const SendPanel: React.FC<SendPanelProps> = ({
     return dataBytes + checksumBytes;
   };
 
+  // Calculate checksum preview
+  const checksumPreview = useMemo(() => {
+    if (checksumConfig.type === 'None' || !value.trim()) {
+      return '';
+    }
+
+    try {
+      let dataBytes: Uint8Array;
+      if (format === 'Text') {
+        dataBytes = new TextEncoder().encode(value);
+      } else {
+        // Parse hex string to bytes
+        const cleanHex = value.replace(/\s/g, '');
+        const bytes: number[] = [];
+        for (let i = 0; i < cleanHex.length; i += 2) {
+          const byte = parseInt(cleanHex.substring(i, i + 2), 16);
+          if (!isNaN(byte)) {
+            bytes.push(byte);
+          }
+        }
+        dataBytes = new Uint8Array(bytes);
+      }
+
+      if (dataBytes.length === 0) {
+        return '';
+      }
+
+      const checksumBytes = calculateChecksum(dataBytes, checksumConfig);
+      if (checksumBytes.length === 0) {
+        return '';
+      }
+
+      // Format as hex string
+      return checksumBytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+    } catch {
+      return '';
+    }
+  }, [value, format, checksumConfig]);
+
   const insertCommonHex = (hexValue: string) => {
     const newValue = value ? `${value} ${hexValue}` : hexValue;
     onChange(newValue);
@@ -322,7 +361,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   border: `1px solid ${colors.borderLight}`,
                   color: checksumConfig.type !== 'None' ? '#ffffff' : colors.textSecondary
                 }}
-                disabled={!isConnected}
                 title={t('sendPanel.checksumAlgorithm')}
               >
                 {checksumTypes.map((type) => (
@@ -356,7 +394,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   color: format === 'Text' ? '#ffffff' : colors.textSecondary,
                   boxShadow: format === 'Text' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
                 }}
-                disabled={!isConnected}
               >
                 Text
               </button>
@@ -368,7 +405,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   color: format === 'Hex' ? '#ffffff' : colors.textSecondary,
                   boxShadow: format === 'Hex' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
                 }}
-                disabled={!isConnected}
               >
                 Hex
               </button>
@@ -400,7 +436,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
                     color: colors.textPrimary
                   }}
                   min="0"
-                  disabled={!isConnected}
                   title={t('sendPanel.startIndexTitle')}
                 />
               </div>
@@ -417,7 +452,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
                     color: colors.textPrimary
                   }}
                   max="0"
-                  disabled={!isConnected}
                   title={t('sendPanel.endIndexTitle')}
                 />
               </div>
@@ -446,7 +480,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
                     color: colors.textPrimary,
                     '--tw-ring-color': `${colors.accent}80`
                   } as React.CSSProperties}
-                  disabled={!isConnected}
                 />
 
                 <div className="flex items-center justify-between mt-2 text-xs flex-shrink-0" style={{ color: colors.textTertiary }}>
@@ -458,6 +491,11 @@ const SendPanel: React.FC<SendPanelProps> = ({
                     {checksumConfig.type !== 'None' && (
                       <span style={{ color: colors.accent }}>
                         +{getChecksumLength(checksumConfig.type)} ({checksumConfig.type}) = {getTotalByteCount()}
+                        {checksumPreview && (
+                          <span className="font-mono ml-2" style={{ color: colors.textTertiary }}>
+                            [{checksumPreview}]
+                          </span>
+                        )}
                       </span>
                     )}
                   </div>
