@@ -155,6 +155,8 @@
     "hex": "十六进制"
   },
   "quickCommand": {
+    "name": "名称",
+    "namePlaceholder": "指令名称（可选）",
     "command": "指令",
     "ending": "结束符",
     "send": "发送",

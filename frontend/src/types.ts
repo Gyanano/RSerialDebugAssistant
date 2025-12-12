@@ -58,6 +58,7 @@ export type LineEnding = 'None' | '\\r' | '\\n' | '\\r\\n';
 
 export interface QuickCommand {
   id: string;
+  name: string;           // Optional name for identification
   selected: boolean;      // For batch sending selection
   isHex: boolean;         // Send as hex format
   content: string;        // Command content

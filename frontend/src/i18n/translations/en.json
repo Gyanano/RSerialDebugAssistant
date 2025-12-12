@@ -155,6 +155,8 @@
     "hex": "Hex"
   },
   "quickCommand": {
+    "name": "Name",
+    "namePlaceholder": "Command name (optional)",
     "command": "Command",
     "ending": "Ending",
     "send": "Send",

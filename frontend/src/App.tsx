@@ -32,6 +32,7 @@ const DEFAULT_LOG_VIEWER_RATIO = 0.65;
 
 const createEmptyCommand = (): QuickCommand => ({
   id: crypto.randomUUID(),
+  name: '',
   selected: false,
   isHex: false,
   content: '',
@@ -50,7 +51,15 @@ const loadQuickCommandsFromStorage = (): { lists: QuickCommandList[]; currentLis
     if (stored) {
       const parsed = JSON.parse(stored);
       if (parsed.lists && parsed.lists.length > 0) {
-        return parsed;
+        // Ensure backward compatibility: add missing 'name' field to commands
+        const migratedLists = parsed.lists.map((list: QuickCommandList) => ({
+          ...list,
+          commands: list.commands.map((cmd: QuickCommand) => ({
+            ...cmd,
+            name: cmd.name ?? '',  // Default to empty string if name doesn't exist
+          })),
+        }));
+        return { lists: migratedLists, currentListId: parsed.currentListId };
       }
     }
   } catch (e) {

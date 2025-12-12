@@ -3,6 +3,7 @@ import { Plus, Send, ChevronDown, Edit2, Check, X, Trash2, Play, Square, Refresh
 import { QuickCommand, QuickCommandList, LineEnding } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
+import { getTextEncoding, textToHex, hexToText } from '../utils/encoding';
 
 const LOOP_INTERVAL_KEY = 'quickCommandLoopInterval';
 const DEFAULT_LOOP_INTERVAL = 1000;
@@ -22,8 +23,26 @@ interface QuickCommandPanelProps {
 const MAX_COMMANDS = 600;
 const INITIAL_COMMANDS = 20;
 
+// Format hex input: filter non-hex chars, add spaces every 2 chars
+const formatHexInput = (input: string): string => {
+  // Remove all spaces first
+  const withoutSpaces = input.replace(/\s/g, '');
+
+  // Filter to only valid hex characters (0-9, A-F, a-f) and convert to uppercase
+  const hexOnly = withoutSpaces.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+
+  // Add space after every 2 characters
+  const pairs: string[] = [];
+  for (let i = 0; i < hexOnly.length; i += 2) {
+    pairs.push(hexOnly.substring(i, i + 2));
+  }
+
+  return pairs.join(' ');
+};
+
 const createEmptyCommand = (): QuickCommand => ({
   id: crypto.randomUUID(),
+  name: '',
   selected: false,
   isHex: false,
   content: '',
@@ -61,6 +80,9 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   });
   const [iterationCount, setIterationCount] = useState(0);
   const loopTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Track which command index is currently being converted (for disabling input during async conversion)
+  const [convertingIndex, setConvertingIndex] = useState<number | null>(null);
 
   const currentList = lists.find(l => l.id === currentListId) || lists[0];
   const lineEndingOptions: { value: LineEnding; label: string }[] = [
@@ -141,10 +163,54 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   };
 
   const handleCommandChange = (index: number, field: keyof QuickCommand, value: any) => {
+    const command = currentList.commands[index];
+    let processedValue = value;
+
+    // If changing content in hex mode, apply hex formatting
+    if (field === 'content' && command.isHex) {
+      processedValue = formatHexInput(value);
+    }
+
     const updatedCommands = [...currentList.commands];
-    updatedCommands[index] = { ...updatedCommands[index], [field]: value };
+    updatedCommands[index] = { ...updatedCommands[index], [field]: processedValue };
     updateCurrentList(updatedCommands);
   };
+
+  // Handle hex toggle with automatic text↔hex conversion
+  const handleHexToggle = useCallback(async (index: number) => {
+    const command = currentList.commands[index];
+    const newIsHex = !command.isHex;
+
+    // Skip conversion if content is empty
+    if (!command.content.trim()) {
+      handleCommandChange(index, 'isHex', newIsHex);
+      return;
+    }
+
+    setConvertingIndex(index);
+    try {
+      const encoding = getTextEncoding();
+      let newContent: string;
+
+      if (newIsHex) {
+        // Converting text to hex
+        newContent = await textToHex(command.content, encoding);
+      } else {
+        // Converting hex to text
+        newContent = await hexToText(command.content, encoding);
+      }
+
+      const updatedCommands = [...currentList.commands];
+      updatedCommands[index] = { ...updatedCommands[index], isHex: newIsHex, content: newContent };
+      updateCurrentList(updatedCommands);
+    } catch (error) {
+      console.error('Error converting format:', error);
+      // Still toggle the mode even if conversion fails
+      handleCommandChange(index, 'isHex', newIsHex);
+    } finally {
+      setConvertingIndex(null);
+    }
+  }, [currentList.commands, currentListId, lists, onListsChange]);
 
   const handleAddMoreCommands = () => {
     if (currentList.commands.length >= MAX_COMMANDS) return;
@@ -236,6 +302,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               title={t('quickCommand.selectAll')}
             />
           </div>
+          <div className="w-24 text-center">{t('quickCommand.name')}</div>
           <div className="w-12 text-center">HEX</div>
           <div className="flex-1 text-center">{t('quickCommand.command')}</div>
           <div className="w-20 text-center">{t('quickCommand.ending')}</div>
@@ -263,17 +330,37 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               />
             </div>
 
+            {/* Name Input */}
+            <div className="w-24 px-1">
+              <input
+                type="text"
+                value={command.name || ''}
+                onChange={(e) => handleCommandChange(index, 'name', e.target.value)}
+                placeholder=""
+                className="w-full px-1.5 py-1 text-xs rounded focus:outline-none focus:ring-1"
+                style={{
+                  backgroundColor: colors.bgInput,
+                  border: `1px solid ${colors.border}`,
+                  color: colors.textPrimary,
+                  '--tw-ring-color': colors.accent
+                } as React.CSSProperties}
+                disabled={disabled}
+                title={t('quickCommand.namePlaceholder')}
+              />
+            </div>
+
             {/* HEX Toggle */}
             <div className="w-12 flex justify-center">
               <button
-                onClick={() => handleCommandChange(index, 'isHex', !command.isHex)}
+                onClick={() => handleHexToggle(index)}
                 className="px-1.5 py-0.5 text-xs font-mono rounded transition-colors"
                 style={{
                   backgroundColor: command.isHex ? colors.accent : colors.bgInput,
                   color: command.isHex ? '#ffffff' : colors.textTertiary,
-                  border: `1px solid ${command.isHex ? colors.accent : colors.border}`
+                  border: `1px solid ${command.isHex ? colors.accent : colors.border}`,
+                  opacity: convertingIndex === index ? 0.5 : 1
                 }}
-                disabled={disabled}
+                disabled={disabled || convertingIndex === index}
               >
                 HEX
               </button>
@@ -291,9 +378,10 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   backgroundColor: colors.bgInput,
                   border: `1px solid ${colors.border}`,
                   color: colors.textPrimary,
-                  '--tw-ring-color': colors.accent
+                  '--tw-ring-color': colors.accent,
+                  opacity: convertingIndex === index ? 0.5 : 1
                 } as React.CSSProperties}
-                disabled={disabled}
+                disabled={disabled || convertingIndex === index}
               />
             </div>
 
