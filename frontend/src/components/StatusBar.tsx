@@ -109,7 +109,7 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
       <div className="flex items-center space-x-3" style={{ color: colors.textTertiary }}>
         <span className="font-mono">{getConfigSummary()}</span>
         <div className="w-px h-3" style={{ backgroundColor: colors.border }}></div>
-        <span>v1.2.0</span>
+        <span>v1.2.1</span>
       </div>
     </div>
   );

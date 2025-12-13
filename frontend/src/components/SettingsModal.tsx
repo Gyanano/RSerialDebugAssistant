@@ -794,7 +794,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               <div className="p-4 flex items-center justify-between">
                 <div>
                   <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
-                  <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} 1.2.0 (Build 20251206)</div>
+                  <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} 1.2.1 (Build 20251213)</div>
                 </div>
                 <button
                   onClick={handleCheckUpdates}

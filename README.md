@@ -391,6 +391,7 @@ This project stands on the shoulders of amazing open-source projects:
 <details>
 <summary><b>Version History</b></summary>
 
+- **v1.2.1** - Add check update feature, enhanced log viewer with search and line numbers, and improved display formatting.
 - **v1.2.0** - Add frame segmentation and advanced features, internationalization and timezone support.
 - **v1.1.0** - Add periodic sending function and quick command sending function. Implement the Light/Dark theme UI.
 - **v1.0.0** - Initial release with core serial debugging functionality.
