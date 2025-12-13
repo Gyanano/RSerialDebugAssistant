@@ -754,7 +754,7 @@ function App() {
               </div>
 
               {/* Port Selector */}
-              <div className="p-4" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+              <div className="p-4 overflow-hidden" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
                 <PortSelector
                   ports={ports}
                   selectedPort={selectedPort}

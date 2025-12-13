@@ -102,26 +102,26 @@ const PortSelector: React.FC<PortSelectorProps> = ({
         </Select>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 overflow-hidden">
         <Button
           variant={connectionStatus.is_connected ? 'destructive' : 'default'}
-          className="flex-1 h-8 text-sm"
+          className="flex-1 min-w-0 h-8 text-sm"
           onClick={handleConnectionToggle}
           disabled={!selectedPort || isLoading}
         >
           {connectionStatus.is_connected ? (
-            <PlugZap size={12} className="mr-1.5" />
+            <PlugZap size={12} className="mr-1.5 shrink-0" />
           ) : (
-            <Plug size={12} className="mr-1.5" />
+            <Plug size={12} className="mr-1.5 shrink-0" />
           )}
-          <span>{getConnectionButtonText()}</span>
+          <span className="truncate">{getConnectionButtonText()}</span>
         </Button>
         <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md border"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md border shrink-0"
           style={{ backgroundColor: colors.bgInput, borderColor: colors.borderLight }}
         >
           {getStatusIndicator()}
-          <span className="text-xs" style={{ color: colors.textSecondary }}>
+          <span className="text-xs whitespace-nowrap" style={{ color: colors.textSecondary }}>
             {connectionStatus.is_connected ? t('portSelector.online') : t('portSelector.offline')}
           </span>
         </div>

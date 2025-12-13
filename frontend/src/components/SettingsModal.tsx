@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Folder, Moon, Sun, ChevronDown, ChevronUp, Loader2, ExternalLink, Download, CheckCircle, AlertCircle } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTheme } from '../contexts/ThemeContext';
@@ -268,7 +268,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   const handleBrowsePath = async () => {
     try {
       setIsBrowsing(true);
-      const selected = await open({
+      const selected = await openDialog({
         directory: true,
         multiple: false,
         title: 'Select Log Save Location',
@@ -368,7 +368,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0" style={{ backgroundColor: colors.bgSidebar }}>
+      <DialogContent disableFocusTrap className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0" style={{ backgroundColor: colors.bgSidebar }}>
         <DialogHeader className="px-4 py-3 border-b" style={{ backgroundColor: colors.bgHeader, borderColor: colors.borderDark }}>
           <DialogTitle className="text-sm font-semibold" style={{ color: colors.textPrimary }}>
             {t('settings.title')}
@@ -486,15 +486,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button
-                            type="button"
+                          <Button
+                            variant="outline"
+                            size="icon"
                             onClick={handleBrowsePath}
                             disabled={isBrowsing}
-                            className="h-8 w-8 inline-flex items-center justify-center rounded-md border transition-colors hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
-                            style={{ borderColor: colors.border, backgroundColor: colors.bgInput }}
+                            className="h-8 w-8"
                           >
-                            <Folder size={16} style={{ color: colors.textSecondary }} />
-                          </button>
+                            <Folder size={16} />
+                          </Button>
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>{t('settings.browseFolderTitle')}</p>
