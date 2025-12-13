@@ -90,6 +90,10 @@ pub struct LogEntry {
     pub data: Vec<u8>,
     pub format: DataFormat,
     pub port_name: String,
+    /// Pre-formatted display text (formatted at receive time based on current settings)
+    pub display_text: String,
+    /// Pre-formatted timestamp string (None if timestamps were disabled when entry was created)
+    pub timestamp_formatted: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,4 +178,56 @@ pub struct RecordingStatus {
     pub raw_recording_active: bool,
     pub text_file_path: Option<String>,
     pub raw_file_path: Option<String>,
+}
+
+// Display settings types for pre-formatted log rendering
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub enum ReceiveDisplayFormat {
+    #[default]
+    Txt,
+    Hex,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecialCharConfig {
+    pub enabled: bool,
+    pub convert_lf: bool,
+    pub convert_cr: bool,
+    pub convert_tab: bool,
+    pub convert_null: bool,
+    pub convert_esc: bool,
+    pub convert_spaces: bool,
+}
+
+impl Default for SpecialCharConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            convert_lf: true,
+            convert_cr: true,
+            convert_tab: true,
+            convert_null: true,
+            convert_esc: true,
+            convert_spaces: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisplaySettings {
+    pub format: ReceiveDisplayFormat,
+    pub encoding: TextEncoding,
+    pub special_char_config: SpecialCharConfig,
+    pub show_timestamps: bool,
+}
+
+impl Default for DisplaySettings {
+    fn default() -> Self {
+        Self {
+            format: ReceiveDisplayFormat::Txt,
+            encoding: TextEncoding::Utf8,
+            special_char_config: SpecialCharConfig::default(),
+            show_timestamps: true,
+        }
+    }
 }

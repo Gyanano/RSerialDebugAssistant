@@ -29,6 +29,8 @@ pub struct SerialManager {
     log_directory: Arc<Mutex<String>>,
     // Timezone offset in minutes for recording timestamps
     timezone_offset_minutes: Arc<Mutex<i32>>,
+    // Display settings for pre-formatted log rendering
+    display_settings: Arc<Mutex<DisplaySettings>>,
 }
 
 #[derive(Debug, Default)]
@@ -63,6 +65,7 @@ impl SerialManager {
             raw_file_path: Arc::new(Mutex::new(None)),
             log_directory: Arc::new(Mutex::new(default_log_dir)),
             timezone_offset_minutes: Arc::new(Mutex::new(0)),
+            display_settings: Arc::new(Mutex::new(DisplaySettings::default())),
         }
     }
 
@@ -153,6 +156,7 @@ impl SerialManager {
         let text_file = Arc::clone(&self.text_file);
         let raw_file = Arc::clone(&self.raw_file);
         let timezone_offset = Arc::clone(&self.timezone_offset_minutes);
+        let display_settings = Arc::clone(&self.display_settings);
         let port_name_clone = port_name.to_string();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
         let mut read_port = port.try_clone()?;
@@ -174,6 +178,11 @@ impl SerialManager {
                     .map(|guard| guard.clone())
                     .unwrap_or_default();
                 let timeout_duration = Duration::from_millis(seg_config.timeout_ms);
+
+                // Get current display settings for formatting
+                let disp_settings = display_settings.lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
 
                 match read_port.read(&mut buffer) {
                     Ok(bytes_read) if bytes_read > 0 => {
@@ -209,6 +218,15 @@ impl SerialManager {
                                         }
                                     }
 
+                                    // Format display text and timestamp based on current settings
+                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                                    let display_text = format_data_for_display(&frame_data, &disp_settings);
+                                    let timestamp_formatted = if disp_settings.show_timestamps {
+                                        Some(format_timestamp_with_offset(tz_offset))
+                                    } else {
+                                        None
+                                    };
+
                                     let log_entry = LogEntry {
                                         id: None,
                                         timestamp: Utc::now(),
@@ -216,6 +234,8 @@ impl SerialManager {
                                         data: frame_data,
                                         format: DataFormat::Text,
                                         port_name: port_name_clone.clone(),
+                                        display_text,
+                                        timestamp_formatted,
                                     };
 
                                     if let Ok(mut logs_guard) = logs.lock() {
@@ -250,6 +270,15 @@ impl SerialManager {
                                         }
                                     }
 
+                                    // Format display text and timestamp based on current settings
+                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                                    let display_text = format_data_for_display(&frame_data, &disp_settings);
+                                    let timestamp_formatted = if disp_settings.show_timestamps {
+                                        Some(format_timestamp_with_offset(tz_offset))
+                                    } else {
+                                        None
+                                    };
+
                                     let log_entry = LogEntry {
                                         id: None,
                                         timestamp: Utc::now(),
@@ -257,6 +286,8 @@ impl SerialManager {
                                         data: frame_data,
                                         format: DataFormat::Text,
                                         port_name: port_name_clone.clone(),
+                                        display_text,
+                                        timestamp_formatted,
                                     };
 
                                     if let Ok(mut logs_guard) = logs.lock() {
@@ -295,6 +326,15 @@ impl SerialManager {
                                 }
                             }
 
+                            // Format display text and timestamp based on current settings
+                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                            let display_text = format_data_for_display(&accumulated_data, &disp_settings);
+                            let timestamp_formatted = if disp_settings.show_timestamps {
+                                Some(format_timestamp_with_offset(tz_offset))
+                            } else {
+                                None
+                            };
+
                             let log_entry = LogEntry {
                                 id: None,
                                 timestamp: Utc::now(),
@@ -302,6 +342,8 @@ impl SerialManager {
                                 data: accumulated_data.clone(),
                                 format: DataFormat::Text,
                                 port_name: port_name_clone.clone(),
+                                display_text,
+                                timestamp_formatted,
                             };
 
                             if let Ok(mut logs_guard) = logs.lock() {
@@ -342,6 +384,15 @@ impl SerialManager {
                                 }
                             }
 
+                            // Format display text and timestamp based on current settings
+                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                            let display_text = format_data_for_display(&accumulated_data, &disp_settings);
+                            let timestamp_formatted = if disp_settings.show_timestamps {
+                                Some(format_timestamp_with_offset(tz_offset))
+                            } else {
+                                None
+                            };
+
                             let log_entry = LogEntry {
                                 id: None,
                                 timestamp: Utc::now(),
@@ -349,6 +400,8 @@ impl SerialManager {
                                 data: accumulated_data.clone(),
                                 format: DataFormat::Text,
                                 port_name: port_name_clone.clone(),
+                                display_text,
+                                timestamp_formatted,
                             };
 
                             if let Ok(mut logs_guard) = logs.lock() {
@@ -443,6 +496,16 @@ impl SerialManager {
                 stats_guard.bytes_sent += data.len() as u64;
             }
 
+            // Get current display settings for formatting
+            let disp_settings = self.get_display_settings();
+            let tz_offset = *self.timezone_offset_minutes.lock().unwrap_or_else(|e| e.into_inner());
+            let display_text = format_data_for_display(&data, &disp_settings);
+            let timestamp_formatted = if disp_settings.show_timestamps {
+                Some(format_timestamp_with_offset(tz_offset))
+            } else {
+                None
+            };
+
             // Add to logs
             self.add_log(LogEntry {
                 id: None,
@@ -451,6 +514,8 @@ impl SerialManager {
                 data,
                 format: DataFormat::Text,
                 port_name: self.port_name.clone().unwrap_or_default(),
+                display_text,
+                timestamp_formatted,
             });
 
             Ok(())
@@ -595,6 +660,44 @@ impl SerialManager {
 
     pub fn get_frame_segmentation_config(&self) -> FrameSegmentationConfig {
         self.frame_segmentation_config
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    // Display settings methods
+
+    /// Set the display format (Txt or Hex)
+    pub fn set_display_format(&self, format: ReceiveDisplayFormat) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.format = format;
+        }
+    }
+
+    /// Set the text encoding (UTF-8 or GBK)
+    pub fn set_text_encoding(&self, encoding: TextEncoding) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.encoding = encoding;
+        }
+    }
+
+    /// Set the special character visualization config
+    pub fn set_special_char_config(&self, config: SpecialCharConfig) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.special_char_config = config;
+        }
+    }
+
+    /// Set whether to show timestamps
+    pub fn set_show_timestamps(&self, show: bool) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.show_timestamps = show;
+        }
+    }
+
+    /// Get current display settings
+    pub fn get_display_settings(&self) -> DisplaySettings {
+        self.display_settings
             .lock()
             .map(|guard| guard.clone())
             .unwrap_or_default()
@@ -843,4 +946,108 @@ fn format_date_for_filename_with_offset(offset_minutes: i32) -> String {
     let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
     let now_with_tz = Utc::now().with_timezone(&tz_offset);
     now_with_tz.format("%Y-%m-%d_%H-%M-%S").to_string()
+}
+
+/// Format bytes as hexadecimal string (e.g., "48 65 6C 6C 6F")
+fn format_bytes_as_hex(data: &[u8]) -> String {
+    data.iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Format bytes as text with special character visualization
+fn format_bytes_as_text(data: &[u8], encoding: &TextEncoding, special_chars: &SpecialCharConfig) -> String {
+    // First decode the bytes using the specified encoding
+    let text = match encoding {
+        TextEncoding::Utf8 => {
+            // Try strict UTF-8 decoding first, fallback to lossy if it fails
+            match std::str::from_utf8(data) {
+                Ok(s) => s.to_string(),
+                Err(_) => {
+                    // If UTF-8 decoding fails, fall back to hex display
+                    return format_bytes_as_hex(data);
+                }
+            }
+        }
+        TextEncoding::Gbk => {
+            let (decoded, _, had_errors) = encoding_rs::GBK.decode(data);
+            if had_errors {
+                // If GBK decoding has errors, fall back to hex display
+                return format_bytes_as_hex(data);
+            }
+            decoded.into_owned()
+        }
+    };
+
+    // Apply special character visualization if enabled
+    if !special_chars.enabled {
+        return text;
+    }
+
+    let mut result = text;
+
+    if special_chars.convert_lf {
+        result = result.replace('\n', "␊");
+    }
+    if special_chars.convert_cr {
+        result = result.replace('\r', "␍");
+    }
+    if special_chars.convert_tab {
+        result = result.replace('\t', "␉");
+    }
+    if special_chars.convert_null {
+        result = result.replace('\0', "␀");
+    }
+    if special_chars.convert_esc {
+        result = result.replace('\x1B', "␛");
+    }
+    if special_chars.convert_spaces {
+        // Only show spaces at end of lines or multiple consecutive spaces
+        // Trailing spaces
+        let mut new_result = String::new();
+        for line in result.split('\n') {
+            if !new_result.is_empty() {
+                new_result.push('\n');
+            }
+            // Handle trailing spaces
+            let trimmed_end = line.trim_end_matches(' ');
+            let trailing_spaces = line.len() - trimmed_end.len();
+            new_result.push_str(trimmed_end);
+            new_result.push_str(&"␣".repeat(trailing_spaces));
+        }
+        // Handle multiple consecutive spaces in the middle
+        let mut final_result = String::new();
+        let mut space_count = 0;
+        for ch in new_result.chars() {
+            if ch == ' ' {
+                space_count += 1;
+            } else {
+                if space_count >= 2 {
+                    final_result.push_str(&"␣".repeat(space_count));
+                } else if space_count == 1 {
+                    final_result.push(' ');
+                }
+                space_count = 0;
+                final_result.push(ch);
+            }
+        }
+        // Handle trailing spaces that weren't converted
+        if space_count >= 2 {
+            final_result.push_str(&"␣".repeat(space_count));
+        } else if space_count == 1 {
+            final_result.push(' ');
+        }
+        result = final_result;
+    }
+
+    result
+}
+
+/// Format data based on display settings
+fn format_data_for_display(data: &[u8], settings: &DisplaySettings) -> String {
+    match settings.format {
+        ReceiveDisplayFormat::Hex => format_bytes_as_hex(data),
+        ReceiveDisplayFormat::Txt => format_bytes_as_text(data, &settings.encoding, &settings.special_char_config),
+    }
 }

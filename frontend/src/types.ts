@@ -42,6 +42,10 @@ export interface LogEntry {
   data: number[];
   format: DataFormat;
   port_name: string;
+  /** Pre-formatted display text (formatted at receive time based on current settings) */
+  display_text: string;
+  /** Pre-formatted timestamp string (undefined if timestamps were disabled when entry was created) */
+  timestamp_formatted?: string;
 }
 
 export interface ConnectionStatus {
@@ -107,3 +111,24 @@ export interface RecordingStatus {
 }
 // Timezone configuration
 export type TimezoneOption = 'System' | string; // 'System' or UTC offset like 'UTC+8', 'UTC-5', etc.
+
+// Display settings types for backend synchronization
+export type ReceiveDisplayFormat = 'Txt' | 'Hex';
+
+// Note: SpecialCharConfig for backend uses snake_case
+export interface SpecialCharConfigBackend {
+  enabled: boolean;
+  convert_lf: boolean;
+  convert_cr: boolean;
+  convert_tab: boolean;
+  convert_null: boolean;
+  convert_esc: boolean;
+  convert_spaces: boolean;
+}
+
+export interface DisplaySettings {
+  format: ReceiveDisplayFormat;
+  encoding: TextEncoding;
+  special_char_config: SpecialCharConfigBackend;
+  show_timestamps: boolean;
+}

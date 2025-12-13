@@ -277,6 +277,42 @@ async fn decode_bytes(bytes: Vec<u8>, encoding: TextEncoding) -> Result<String, 
     }
 }
 
+// Display settings commands
+
+#[tauri::command]
+async fn set_display_format(state: State<'_, AppState>, format: ReceiveDisplayFormat) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_display_format(format);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_text_encoding_display(state: State<'_, AppState>, encoding: TextEncoding) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_text_encoding(encoding);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_special_char_config(state: State<'_, AppState>, config: SpecialCharConfig) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_special_char_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_show_timestamps(state: State<'_, AppState>, show: bool) -> Result<(), String> {
+    let manager = state.serial_manager.lock().unwrap();
+    manager.set_show_timestamps(show);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_display_settings(state: State<'_, AppState>) -> Result<DisplaySettings, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    Ok(manager.get_display_settings())
+}
+
 // Update checker commands
 
 #[tauri::command]
@@ -341,6 +377,11 @@ fn main() {
             get_recording_status,
             encode_text,
             decode_bytes,
+            set_display_format,
+            set_text_encoding_display,
+            set_special_char_config,
+            set_show_timestamps,
+            get_display_settings,
             check_for_updates,
             download_update,
             launch_installer_and_exit

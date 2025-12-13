@@ -1,13 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Trash2, Download, Terminal, ChevronDown, Circle } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { LogEntry, TextEncoding, SpecialCharConfig, RecordingStatus } from '../types';
+import { LogEntry, TextEncoding, SpecialCharConfig, RecordingStatus, ReceiveDisplayFormat, SpecialCharConfigBackend } from '../types';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { loadTimezone, formatTimestampWithTimezone } from '../utils/timezone';
-
-type ReceiveDisplayFormat = 'Txt' | 'Hex';
 
 const STORAGE_KEY_RECEIVE_FORMAT = 'serialDebug_receiveFormat';
 const STORAGE_KEY_SHOW_TIMESTAMPS = 'serialDebug_showTimestamps';
@@ -121,6 +119,63 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
       clearInterval(interval);
     };
   }, []);
+
+  // Helper function to convert frontend SpecialCharConfig to backend format
+  const toBackendSpecialCharConfig = (config: SpecialCharConfig): SpecialCharConfigBackend => ({
+    enabled: config.enabled,
+    convert_lf: config.convertLF,
+    convert_cr: config.convertCR,
+    convert_tab: config.convertTab,
+    convert_null: config.convertNull,
+    convert_esc: config.convertEsc,
+    convert_spaces: config.convertSpaces,
+  });
+
+  // Sync display settings with backend when they change
+  // This enables pre-formatted log rendering for new incoming data
+  useEffect(() => {
+    const syncDisplaySettings = async () => {
+      try {
+        await invoke('set_display_format', { format: receiveFormat });
+      } catch (error) {
+        console.error('Error syncing display format:', error);
+      }
+    };
+    syncDisplaySettings();
+  }, [receiveFormat]);
+
+  useEffect(() => {
+    const syncTextEncoding = async () => {
+      try {
+        await invoke('set_text_encoding_display', { encoding: textEncoding });
+      } catch (error) {
+        console.error('Error syncing text encoding:', error);
+      }
+    };
+    syncTextEncoding();
+  }, [textEncoding]);
+
+  useEffect(() => {
+    const syncSpecialCharConfig = async () => {
+      try {
+        await invoke('set_special_char_config', { config: toBackendSpecialCharConfig(specialCharConfig) });
+      } catch (error) {
+        console.error('Error syncing special char config:', error);
+      }
+    };
+    syncSpecialCharConfig();
+  }, [specialCharConfig]);
+
+  useEffect(() => {
+    const syncShowTimestamps = async () => {
+      try {
+        await invoke('set_show_timestamps', { show: showTimestamps });
+      } catch (error) {
+        console.error('Error syncing show timestamps:', error);
+      }
+    };
+    syncShowTimestamps();
+  }, [showTimestamps]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -531,7 +586,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                 <div className="flex items-start space-x-2">
                   {showTimestamps && (
                     <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
-                      {formatTimestamp(log.timestamp)}
+                      {/* Use pre-formatted timestamp if available, otherwise format on the fly */}
+                      {log.timestamp_formatted ?? formatTimestamp(log.timestamp)}
                     </span>
                   )}
                   <span
@@ -544,7 +600,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                     className="flex-1 break-all font-mono text-sm whitespace-pre-wrap"
                     style={{ color: colors.textPrimary }}
                   >
-                    {formatData(log.data)}
+                    {/* Use pre-formatted display_text, fallback to on-the-fly formatting for backward compatibility */}
+                    {log.display_text ?? formatData(log.data)}
                   </span>
                 </div>
               </div>
