@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Folder, Moon, Sun, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Folder, Moon, Sun, ChevronDown, ChevronUp, Loader2, ExternalLink, Download, CheckCircle, AlertCircle } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage, Language } from '../i18n';
@@ -24,6 +25,34 @@ const DEFAULT_FRAME_SEGMENTATION_CONFIG: FrameSegmentationConfig = {
   delimiter: 'AnyNewline',
 };
 
+// Update check types
+interface UpdateCheckResult {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  download_url: string | null;
+  download_size: number | null;
+  release_url: string;
+  asset_name: string | null;
+}
+
+interface DownloadProgress {
+  downloaded: number;
+  total: number;
+  percentage: number;
+}
+
+type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
+
+// Format bytes to human-readable size
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 interface SettingsModalProps {
   onClose: () => void;
 }
@@ -43,6 +72,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [frameSegmentationConfig, setFrameSegmentationConfig] = useState<FrameSegmentationConfig>(DEFAULT_FRAME_SEGMENTATION_CONFIG);
   const [customDelimiterHex, setCustomDelimiterHex] = useState('');
   const [customDelimiterError, setCustomDelimiterError] = useState('');
+
+  // Update checker state
+  const [updateState, setUpdateState] = useState<UpdateState>('idle');
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [installerPath, setInstallerPath] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // Helper to get delimiter type for UI display
   const getDelimiterType = (delimiter: FrameDelimiter): 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom' => {
@@ -242,9 +278,88 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     }
   };
 
-  const handleCheckUpdates = () => {
-    // TODO: Implement update check
-    console.log('Check for updates clicked');
+  // Check for updates
+  const handleCheckUpdates = async () => {
+    setUpdateState('checking');
+    setUpdateError(null);
+
+    try {
+      const result = await invoke<UpdateCheckResult>('check_for_updates');
+      setUpdateInfo(result);
+
+      if (result.has_update) {
+        if (!result.download_url || !result.asset_name) {
+          setUpdateState('error');
+          setUpdateError(t('settings.noExeFound'));
+        } else {
+          setUpdateState('available');
+        }
+      } else {
+        setUpdateState('idle');
+        // Show "up to date" message briefly
+        setUpdateError(t('settings.upToDate'));
+        setTimeout(() => setUpdateError(null), 3000);
+      }
+    } catch (error) {
+      setUpdateState('error');
+      const errorMsg = String(error);
+      if (errorMsg.includes('Network') || errorMsg.includes('network')) {
+        setUpdateError(t('settings.networkError'));
+      } else if (errorMsg.includes('No releases')) {
+        setUpdateError(t('settings.noReleases'));
+      } else {
+        setUpdateError(errorMsg);
+      }
+    }
+  };
+
+  // Download update
+  const handleDownloadUpdate = async () => {
+    if (!updateInfo?.download_url || !updateInfo?.asset_name) return;
+
+    setUpdateState('downloading');
+    setDownloadProgress(0);
+    setUpdateError(null);
+
+    // Listen for download progress events
+    const unlisten = await listen<DownloadProgress>('update-download-progress', (event) => {
+      setDownloadProgress(event.payload.percentage);
+    });
+
+    try {
+      const path = await invoke<string>('download_update', {
+        downloadUrl: updateInfo.download_url,
+        assetName: updateInfo.asset_name,
+      });
+      setInstallerPath(path);
+      setUpdateState('ready');
+    } catch (error) {
+      setUpdateState('error');
+      setUpdateError(t('settings.downloadError') + ': ' + String(error));
+    } finally {
+      unlisten();
+    }
+  };
+
+  // Launch installer and exit
+  const handleInstall = async () => {
+    if (!installerPath) return;
+
+    try {
+      await invoke('launch_installer_and_exit', { installerPath });
+    } catch (error) {
+      setUpdateState('error');
+      setUpdateError(t('settings.installError') + ': ' + String(error) + '\n' + installerPath);
+    }
+  };
+
+  // Reset update state
+  const handleCancelUpdate = () => {
+    setUpdateState('idle');
+    setUpdateInfo(null);
+    setDownloadProgress(0);
+    setInstallerPath(null);
+    setUpdateError(null);
   };
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -672,26 +787,216 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               {t('settings.about')}
             </h3>
             <div
-              className="rounded-lg p-4 flex items-center justify-between"
+              className="rounded-lg overflow-hidden"
               style={{ backgroundColor: colors.bgMain, border: `1px solid ${colors.borderLight}` }}
             >
-              <div>
-                <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
-                <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} 1.2.0 (Build 20251206)</div>
+              {/* App Info Row */}
+              <div className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
+                  <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} 1.2.0 (Build 20251206)</div>
+                </div>
+                <button
+                  onClick={handleCheckUpdates}
+                  disabled={updateState === 'checking' || updateState === 'downloading'}
+                  className="px-3 py-1 rounded-md text-xs transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: colors.buttonSecondaryBg,
+                    border: `1px solid ${colors.borderLight}`,
+                    color: colors.textPrimary
+                  }}
+                  onMouseEnter={(e) => {
+                    if (updateState !== 'checking' && updateState !== 'downloading') {
+                      e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover;
+                    }
+                  }}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
+                >
+                  {updateState === 'checking' ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      <span>{t('settings.checking')}</span>
+                    </>
+                  ) : (
+                    <span>{t('settings.checkForUpdates')}</span>
+                  )}
+                </button>
               </div>
-              <button
-                onClick={handleCheckUpdates}
-                className="px-3 py-1 rounded-md text-xs transition-colors"
-                style={{
-                  backgroundColor: colors.buttonSecondaryBg,
-                  border: `1px solid ${colors.borderLight}`,
-                  color: colors.textPrimary
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
-              >
-                {t('settings.checkForUpdates')}
-              </button>
+
+              {/* Update Available State */}
+              {updateState === 'available' && updateInfo && (
+                <div
+                  className="p-4 border-t space-y-3"
+                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                >
+                  <div className="flex items-start space-x-2">
+                    <Download size={16} className="mt-0.5 flex-shrink-0" style={{ color: colors.accent }} />
+                    <div className="flex-1">
+                      <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
+                        {t('settings.updateAvailable')}
+                      </div>
+                      <div className="text-xs mt-1 space-y-0.5" style={{ color: colors.textSecondary }}>
+                        <div>{t('settings.currentVersion')}: {updateInfo.current_version}</div>
+                        <div>{t('settings.latestVersion')}: {updateInfo.latest_version}</div>
+                        {updateInfo.download_size && (
+                          <div>{t('settings.downloadSize')}: {formatBytes(updateInfo.download_size)}</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleDownloadUpdate}
+                      className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                      style={{
+                        backgroundColor: colors.accent,
+                        color: '#ffffff'
+                      }}
+                    >
+                      {t('settings.downloadAndInstall')}
+                    </button>
+                    <a
+                      href={updateInfo.release_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-md text-xs transition-colors flex items-center space-x-1"
+                      style={{
+                        backgroundColor: colors.buttonSecondaryBg,
+                        border: `1px solid ${colors.borderLight}`,
+                        color: colors.textPrimary
+                      }}
+                    >
+                      <ExternalLink size={12} />
+                      <span>{t('settings.viewReleaseNotes')}</span>
+                    </a>
+                    <button
+                      onClick={handleCancelUpdate}
+                      className="px-3 py-1.5 rounded-md text-xs transition-colors"
+                      style={{
+                        backgroundColor: colors.buttonSecondaryBg,
+                        border: `1px solid ${colors.borderLight}`,
+                        color: colors.textSecondary
+                      }}
+                    >
+                      {t('settings.cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Downloading State */}
+              {updateState === 'downloading' && (
+                <div
+                  className="p-4 border-t space-y-3"
+                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                >
+                  <div className="flex items-center space-x-2">
+                    <Loader2 size={16} className="animate-spin" style={{ color: colors.accent }} />
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.downloading')} {downloadProgress}%
+                    </span>
+                  </div>
+                  <div
+                    className="h-2 rounded-full overflow-hidden"
+                    style={{ backgroundColor: colors.bgMain }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-200"
+                      style={{
+                        width: `${downloadProgress}%`,
+                        backgroundColor: colors.accent
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Ready to Install State */}
+              {updateState === 'ready' && (
+                <div
+                  className="p-4 border-t space-y-3"
+                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                >
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle size={16} className="mt-0.5 flex-shrink-0" style={{ color: '#22c55e' }} />
+                    <div className="flex-1">
+                      <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
+                        {t('settings.readyToInstall')}
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: colors.textSecondary }}>
+                        {t('settings.readyToInstallDesc')}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleInstall}
+                      className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                      style={{
+                        backgroundColor: '#22c55e',
+                        color: '#ffffff'
+                      }}
+                    >
+                      {t('settings.closeAndInstall')}
+                    </button>
+                    <button
+                      onClick={handleCancelUpdate}
+                      className="px-3 py-1.5 rounded-md text-xs transition-colors"
+                      style={{
+                        backgroundColor: colors.buttonSecondaryBg,
+                        border: `1px solid ${colors.borderLight}`,
+                        color: colors.textSecondary
+                      }}
+                    >
+                      {t('settings.cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Error State */}
+              {updateState === 'error' && updateError && (
+                <div
+                  className="p-4 border-t space-y-3"
+                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                >
+                  <div className="flex items-start space-x-2">
+                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" style={{ color: '#ef4444' }} />
+                    <div className="flex-1">
+                      <div className="font-medium text-sm" style={{ color: '#ef4444' }}>
+                        {t('settings.updateError')}
+                      </div>
+                      <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: colors.textSecondary }}>
+                        {updateError}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCancelUpdate}
+                    className="px-3 py-1.5 rounded-md text-xs transition-colors"
+                    style={{
+                      backgroundColor: colors.buttonSecondaryBg,
+                      border: `1px solid ${colors.borderLight}`,
+                      color: colors.textSecondary
+                    }}
+                  >
+                    {t('settings.cancel')}
+                  </button>
+                </div>
+              )}
+
+              {/* Up to date message (shown briefly) */}
+              {updateState === 'idle' && updateError === t('settings.upToDate') && (
+                <div
+                  className="p-3 border-t flex items-center space-x-2"
+                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                >
+                  <CheckCircle size={14} style={{ color: '#22c55e' }} />
+                  <span className="text-xs" style={{ color: colors.textSecondary }}>
+                    {t('settings.upToDate')}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

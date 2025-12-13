@@ -7,14 +7,17 @@ use tauri::State;
 
 mod serial_manager;
 mod types;
+mod updater;
 
 use serial_manager::SerialManager;
 use types::*;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
 // Application state
 struct AppState {
     serial_manager: Mutex<SerialManager>,
     sessions: Mutex<HashMap<String, SerialConfig>>,
+    update_downloading: AtomicBool,
 }
 
 impl Default for AppState {
@@ -22,6 +25,7 @@ impl Default for AppState {
         Self {
             serial_manager: Mutex::new(SerialManager::new()),
             sessions: Mutex::new(HashMap::new()),
+            update_downloading: AtomicBool::new(false),
         }
     }
 }
@@ -273,6 +277,38 @@ async fn decode_bytes(bytes: Vec<u8>, encoding: TextEncoding) -> Result<String, 
     }
 }
 
+// Update checker commands
+
+#[tauri::command]
+async fn check_for_updates() -> Result<updater::UpdateCheckResult, String> {
+    let current_version = env!("CARGO_PKG_VERSION");
+    updater::check_for_updates(current_version).await
+}
+
+#[tauri::command]
+async fn download_update(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    download_url: String,
+    asset_name: String,
+) -> Result<String, String> {
+    // Prevent multiple simultaneous downloads
+    if state.update_downloading.swap(true, AtomicOrdering::SeqCst) {
+        return Err("Download already in progress".to_string());
+    }
+
+    let result = updater::download_update(&app_handle, &download_url, &asset_name).await;
+
+    state.update_downloading.store(false, AtomicOrdering::SeqCst);
+
+    result.map(|path| path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn launch_installer_and_exit(installer_path: String) -> Result<(), String> {
+    updater::launch_installer_and_exit(&installer_path)
+}
+
 fn main() {
     env_logger::init();
 
@@ -304,7 +340,10 @@ fn main() {
             stop_raw_recording,
             get_recording_status,
             encode_text,
-            decode_bytes
+            decode_bytes,
+            check_for_updates,
+            download_update,
+            launch_installer_and_exit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

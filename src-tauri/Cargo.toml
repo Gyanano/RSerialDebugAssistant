@@ -26,6 +26,8 @@ log = "0.4"
 env_logger = "0.11"
 encoding_rs = "0.8"
 dirs = "5.0"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
