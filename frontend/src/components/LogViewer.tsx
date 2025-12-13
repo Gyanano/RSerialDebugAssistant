@@ -2,10 +2,17 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Trash2, Download, Terminal, ChevronDown, Circle, Search, X, ChevronUp } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { LogEntry, TextEncoding, SpecialCharConfig, RecordingStatus, ReceiveDisplayFormat, SpecialCharConfigBackend } from '../types';
-import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { loadTimezone, formatTimestampWithTimezone } from '../utils/timezone';
+
+// shadcn components
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const STORAGE_KEY_RECEIVE_FORMAT = 'serialDebug_receiveFormat';
 const STORAGE_KEY_SHOW_TIMESTAMPS = 'serialDebug_showTimestamps';
@@ -16,7 +23,6 @@ const STORAGE_KEY_SAVE_RAW_ENABLED = 'serialDebug_saveRawEnabled';
 const STORAGE_KEY_LOG_PATH = 'serialDebug_logPath';
 const STORAGE_KEY_SHOW_LINE_NUMBERS = 'serialDebug_showLineNumbers';
 
-// Threshold in pixels to consider "at bottom" for auto-scroll re-enable
 const SCROLL_BOTTOM_THRESHOLD = 50;
 
 const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
@@ -44,7 +50,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   const previousLogsLengthRef = useRef(logs.length);
   const wasConnectedRef = useRef(isConnected);
 
-  // State for receive format and timestamp display
   const [receiveFormat, setReceiveFormat] = useState<ReceiveDisplayFormat>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_RECEIVE_FORMAT);
     return (saved === 'Hex' || saved === 'Txt') ? saved : 'Txt';
@@ -68,10 +73,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     }
     return DEFAULT_SPECIAL_CHAR_CONFIG;
   });
-  const [formatDropdownOpen, setFormatDropdownOpen] = useState(false);
-  const formatDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Recording states
   const [saveTextEnabled, setSaveTextEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_SAVE_TEXT_ENABLED);
     return saved === 'true';
@@ -87,38 +89,31 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     raw_file_path: null,
   });
 
-  // Line numbers state
   const [showLineNumbers, setShowLineNumbers] = useState<boolean>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_SHOW_LINE_NUMBERS);
-    return saved === 'true'; // Default to false
+    return saved === 'true';
   });
 
-  // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const logEntryRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Persist receive format to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_RECEIVE_FORMAT, receiveFormat);
   }, [receiveFormat]);
 
-  // Persist timestamp setting to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SHOW_TIMESTAMPS, String(showTimestamps));
   }, [showTimestamps]);
 
-  // Listen for settings changes from Settings modal
   useEffect(() => {
     const handleStorageChange = () => {
-      // Text encoding
       const savedEncoding = localStorage.getItem(STORAGE_KEY_TEXT_ENCODING);
       if (savedEncoding === 'utf-8' || savedEncoding === 'gbk') {
         setTextEncoding(savedEncoding);
       }
-      // Special char config
       const savedSpecialCharConfig = localStorage.getItem(STORAGE_KEY_SPECIAL_CHAR_CONFIG);
       if (savedSpecialCharConfig) {
         try {
@@ -129,7 +124,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
       }
     };
     window.addEventListener('storage', handleStorageChange);
-    // Also check periodically for same-window changes
     const interval = setInterval(handleStorageChange, 500);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -137,7 +131,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     };
   }, []);
 
-  // Helper function to convert frontend SpecialCharConfig to backend format
   const toBackendSpecialCharConfig = (config: SpecialCharConfig): SpecialCharConfigBackend => ({
     enabled: config.enabled,
     convert_lf: config.convertLF,
@@ -148,8 +141,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     convert_spaces: config.convertSpaces,
   });
 
-  // Sync display settings with backend when they change
-  // This enables pre-formatted log rendering for new incoming data
   useEffect(() => {
     const syncDisplaySettings = async () => {
       try {
@@ -194,18 +185,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     syncShowTimestamps();
   }, [showTimestamps]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (formatDropdownRef.current && !formatDropdownRef.current.contains(event.target as Node)) {
-        setFormatDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Smart auto-scroll: only scroll to bottom when there are NEW logs (not when toggling the switch)
   useEffect(() => {
     const currentLogsLength = logs.length;
     const hasNewLogs = currentLogsLength > previousLogsLengthRef.current;
@@ -214,11 +193,9 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
 
-    // Update the previous logs length for next comparison
     previousLogsLengthRef.current = currentLogsLength;
   }, [logs, autoScrollEnabled]);
 
-  // Persist recording checkbox states to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SAVE_TEXT_ENABLED, String(saveTextEnabled));
   }, [saveTextEnabled]);
@@ -227,16 +204,12 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     localStorage.setItem(STORAGE_KEY_SAVE_RAW_ENABLED, String(saveRawEnabled));
   }, [saveRawEnabled]);
 
-  // Persist line numbers setting to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SHOW_LINE_NUMBERS, String(showLineNumbers));
   }, [showLineNumbers]);
 
-  // Smart scroll detection: disable auto-scroll when user scrolls up, re-enable at bottom
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!logContainerRef.current) return;
-
-    // User scrolling up - disable auto-scroll
     if (e.deltaY < 0 && autoScrollEnabled) {
       setAutoScrollEnabled(false);
     }
@@ -244,31 +217,24 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
   const handleScroll = useCallback(() => {
     if (!logContainerRef.current) return;
-
     const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-
-    // User scrolled to bottom (within threshold) - re-enable auto-scroll
     if (distanceFromBottom <= SCROLL_BOTTOM_THRESHOLD && !autoScrollEnabled) {
       setAutoScrollEnabled(true);
     }
   }, [autoScrollEnabled]);
 
-  // Attach wheel and scroll listeners
   useEffect(() => {
     const container = logContainerRef.current;
     if (!container) return;
-
     container.addEventListener('wheel', handleWheel, { passive: true });
     container.addEventListener('scroll', handleScroll, { passive: true });
-
     return () => {
       container.removeEventListener('wheel', handleWheel);
       container.removeEventListener('scroll', handleScroll);
     };
   }, [handleWheel, handleScroll]);
 
-  // Sync log directory with backend on mount and when it changes
   useEffect(() => {
     const syncLogDirectory = async () => {
       const logPath = localStorage.getItem(STORAGE_KEY_LOG_PATH);
@@ -281,26 +247,21 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
       }
     };
     syncLogDirectory();
-
-    // Also listen for changes
     const interval = setInterval(() => {
       const logPath = localStorage.getItem(STORAGE_KEY_LOG_PATH);
       if (logPath) {
         invoke('set_log_directory', { path: logPath }).catch(console.error);
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, []);
 
-  // Handle auto-start/stop recording based on connection state
   useEffect(() => {
     const handleConnectionChange = async () => {
       const wasConnected = wasConnectedRef.current;
       wasConnectedRef.current = isConnected;
 
       if (isConnected && !wasConnected) {
-        // Just connected - start recordings if checkboxes are enabled
         if (saveTextEnabled) {
           try {
             await invoke('start_text_recording');
@@ -317,7 +278,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         }
       }
 
-      // Update recording status
       try {
         const status = await invoke<RecordingStatus>('get_recording_status');
         setRecordingStatus(status);
@@ -325,11 +285,9 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         console.error('Error getting recording status:', error);
       }
     };
-
     handleConnectionChange();
   }, [isConnected, saveTextEnabled, saveRawEnabled]);
 
-  // Handle checkbox changes when connected
   const handleSaveTextChange = async (enabled: boolean) => {
     setSaveTextEnabled(enabled);
     if (isConnected) {
@@ -375,37 +333,22 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   const formatDataAsText = (data: number[]) => {
     try {
       const bytes = new Uint8Array(data);
-      // Use fatal: true to strictly enforce encoding - throws on invalid sequences
       const decoder = new TextDecoder(textEncoding, { fatal: true });
       let text = decoder.decode(bytes);
 
-      // Apply control character visualization based on settings
       if (specialCharConfig.enabled) {
-        if (specialCharConfig.convertLF) {
-          text = text.replace(/\n/g, '␊');
-        }
-        if (specialCharConfig.convertCR) {
-          text = text.replace(/\r/g, '␍');
-        }
-        if (specialCharConfig.convertTab) {
-          text = text.replace(/\t/g, '␉');
-        }
-        if (specialCharConfig.convertNull) {
-          text = text.replace(/\0/g, '␀');
-        }
-        if (specialCharConfig.convertEsc) {
-          text = text.replace(/\x1B/g, '␛');
-        }
+        if (specialCharConfig.convertLF) text = text.replace(/\n/g, '␊');
+        if (specialCharConfig.convertCR) text = text.replace(/\r/g, '␍');
+        if (specialCharConfig.convertTab) text = text.replace(/\t/g, '␉');
+        if (specialCharConfig.convertNull) text = text.replace(/\0/g, '␀');
+        if (specialCharConfig.convertEsc) text = text.replace(/\x1B/g, '␛');
         if (specialCharConfig.convertSpaces) {
-          // Only show spaces at end of lines or multiple consecutive spaces
-          text = text.replace(/\x20+$/gm, (spaces) => '␣'.repeat(spaces.length));  // Trailing spaces
-          text = text.replace(/\x20{2,}/g, (spaces) => '␣'.repeat(spaces.length)); // Multiple spaces
+          text = text.replace(/\x20+$/gm, (spaces) => '␣'.repeat(spaces.length));
+          text = text.replace(/\x20{2,}/g, (spaces) => '␣'.repeat(spaces.length));
         }
       }
-
       return text;
     } catch {
-      // Decoding failed with the selected encoding - show as hex
       return formatDataAsHex(data);
     }
   };
@@ -414,11 +357,9 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     if (receiveFormat === 'Hex') {
       return formatDataAsHex(data);
     }
-    // 'Txt' uses auto-detection logic
     return formatDataAsText(data);
   };
 
-  // Search logic: compute all matches
   interface SearchMatch {
     logIndex: number;
     startPos: number;
@@ -427,37 +368,27 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
   const searchMatches = useMemo((): SearchMatch[] => {
     if (!searchQuery.trim()) return [];
-
     const matches: SearchMatch[] = [];
     const query = searchQuery.toLowerCase();
-
     logs.forEach((log, logIndex) => {
       const text = (log.display_text ?? formatData(log.data)).toLowerCase();
       let pos = 0;
       while ((pos = text.indexOf(query, pos)) !== -1) {
-        matches.push({
-          logIndex,
-          startPos: pos,
-          endPos: pos + query.length,
-        });
-        pos += 1; // Move forward to find overlapping matches
+        matches.push({ logIndex, startPos: pos, endPos: pos + query.length });
+        pos += 1;
       }
     });
-
     return matches;
   }, [searchQuery, logs]);
 
-  // Reset current match index when matches change
   useEffect(() => {
     if (searchMatches.length > 0) {
       setCurrentMatchIndex(0);
     }
   }, [searchMatches.length]);
 
-  // Get match count for display
   const totalMatches = searchMatches.length;
 
-  // Navigation functions
   const goToNextMatch = useCallback(() => {
     if (totalMatches === 0) return;
     setCurrentMatchIndex(prev => (prev + 1) % totalMatches);
@@ -468,56 +399,44 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     setCurrentMatchIndex(prev => (prev - 1 + totalMatches) % totalMatches);
   }, [totalMatches]);
 
-  // Scroll to current match
   useEffect(() => {
     if (totalMatches === 0 || !searchOpen) return;
-
     const currentMatch = searchMatches[currentMatchIndex];
     if (!currentMatch) return;
-
     const logEntry = logEntryRefs.current[currentMatch.logIndex];
     if (logEntry) {
       logEntry.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [currentMatchIndex, searchMatches, searchOpen, totalMatches]);
 
-  // Open search function
   const openSearch = useCallback(() => {
     setSearchOpen(true);
-    // Focus input after state update
     setTimeout(() => searchInputRef.current?.focus(), 0);
   }, []);
 
-  // Close search function
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchQuery('');
     setCurrentMatchIndex(0);
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+F to open search
       if (e.ctrlKey && e.key === 'f') {
         e.preventDefault();
         openSearch();
         return;
       }
-
-      // Escape to close search
       if (e.key === 'Escape' && searchOpen) {
         e.preventDefault();
         closeSearch();
         return;
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [searchOpen, openSearch, closeSearch]);
 
-  // Handle search input keyboard events
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -529,19 +448,15 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     }
   };
 
-  // Helper function to render text with highlights
   const renderTextWithHighlights = (text: string, logIndex: number): React.ReactNode => {
     if (!searchQuery.trim() || !searchOpen) {
       return text;
     }
-
     const query = searchQuery.toLowerCase();
     const lowerText = text.toLowerCase();
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let matchCountInLog = 0;
-
-    // Find global match index for this log entry
     let globalMatchStartIndex = 0;
     for (let i = 0; i < logIndex; i++) {
       const logText = (logs[i].display_text ?? formatData(logs[i].data)).toLowerCase();
@@ -551,18 +466,13 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         pos += 1;
       }
     }
-
     let pos = 0;
     while ((pos = lowerText.indexOf(query, pos)) !== -1) {
-      // Add non-matching text before this match
       if (pos > lastIndex) {
         parts.push(text.substring(lastIndex, pos));
       }
-
       const globalIndex = globalMatchStartIndex + matchCountInLog;
       const isCurrentMatch = globalIndex === currentMatchIndex;
-
-      // Add highlighted match
       parts.push(
         <span
           key={`${logIndex}-${pos}`}
@@ -576,17 +486,13 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
           {text.substring(pos, pos + searchQuery.length)}
         </span>
       );
-
       lastIndex = pos + searchQuery.length;
       matchCountInLog++;
       pos += 1;
     }
-
-    // Add remaining text
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex));
     }
-
     return parts.length > 0 ? parts : text;
   };
 
@@ -596,308 +502,143 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header - Two Rows */}
+      {/* Header */}
       <div
         className="flex flex-col shadow-sm z-10"
-        style={{
-          backgroundColor: colors.bgHeader,
-          borderBottom: `1px solid ${colors.borderDark}`
-        }}
+        style={{ backgroundColor: colors.bgHeader, borderBottom: `1px solid ${colors.borderDark}` }}
       >
-        {/* Row 1: Console Output title, Export, Clear */}
+        {/* Row 1 */}
         <div className="h-9 px-4 flex items-center justify-between">
-          <div className="flex items-center space-x-2" style={{ color: colors.textSecondary }}>
+          <div className="flex items-center gap-2" style={{ color: colors.textSecondary }}>
             <Terminal size={16} style={{ color: colors.textTertiary }} />
             <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>{t('logViewer.consoleOutput')}</span>
-            <span className="text-xs" style={{ color: colors.textTertiary }}>
-              ({logs.length})
-            </span>
+            <span className="text-xs" style={{ color: colors.textTertiary }}>({logs.length})</span>
           </div>
 
-          <div
-            className="flex rounded-md p-0.5"
-            style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
-          >
-            <button
-              onClick={openSearch}
-              className="px-2 py-0.5 text-xs rounded flex items-center space-x-1 transition-colors"
-              style={{ color: searchOpen ? colors.accent : colors.textSecondary }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = colors.bgHover;
-                e.currentTarget.style.color = colors.textPrimary;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = searchOpen ? colors.accent : colors.textSecondary;
-              }}
-              title={t('logViewer.search')}
-            >
+          <div className="flex rounded-md p-0.5 border" style={{ backgroundColor: colors.bgInput, borderColor: colors.borderLight }}>
+            <Button variant="ghost" size="xs" className="h-6 text-xs gap-1" onClick={openSearch}>
               <Search size={12} />
               <span>{t('logViewer.search')}</span>
-            </button>
+            </Button>
             <div className="w-px my-0.5 mx-0.5" style={{ backgroundColor: colors.border }}></div>
-            <button
-              onClick={onExport}
-              className="px-2 py-0.5 text-xs rounded flex items-center space-x-1 transition-colors"
-              style={{ color: colors.textSecondary }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = colors.bgHover;
-                e.currentTarget.style.color = colors.textPrimary;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = colors.textSecondary;
-              }}
-              disabled={logs.length === 0}
-              title={t('logViewer.exportLogs')}
-            >
+            <Button variant="ghost" size="xs" className="h-6 text-xs gap-1" onClick={onExport} disabled={logs.length === 0}>
               <Download size={12} />
               <span>{t('logViewer.export')}</span>
-            </button>
+            </Button>
             <div className="w-px my-0.5 mx-0.5" style={{ backgroundColor: colors.border }}></div>
-            <button
-              onClick={onClear}
-              className="px-2 py-0.5 text-xs rounded flex items-center space-x-1 transition-colors"
-              style={{ color: colors.textSecondary }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = colors.bgHover;
-                e.currentTarget.style.color = colors.danger;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = colors.textSecondary;
-              }}
-              disabled={logs.length === 0}
-              title={t('logViewer.clearLogs')}
-            >
+            <Button variant="ghost" size="xs" className="h-6 text-xs gap-1 hover:text-destructive" onClick={onClear} disabled={logs.length === 0}>
               <Trash2 size={12} />
               <span>{t('logViewer.clear')}</span>
-            </button>
+            </Button>
           </div>
         </div>
 
-        {/* Row 2: Format, Timestamps, Auto Scroll, Save Text, Save Raw */}
-        <div
-          className="h-8 px-4 flex items-center justify-between"
-          style={{ borderTop: `1px solid ${colors.borderLight}` }}
-        >
-          <div className="flex items-center space-x-3">
-            {/* Receive Format Dropdown */}
-            <div className="relative" ref={formatDropdownRef}>
-              <button
-                onClick={() => setFormatDropdownOpen(!formatDropdownOpen)}
-                className="flex items-center space-x-1 px-2 py-0.5 text-xs rounded transition-colors"
-                style={{
-                  backgroundColor: colors.bgInput,
-                  border: `1px solid ${colors.borderLight}`,
-                  color: colors.textSecondary
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = colors.accent;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = colors.borderLight;
-                }}
-                title={t('logViewer.receiveFormat')}
-              >
-                <span>{t('logViewer.format')}:</span>
-                <span style={{ color: colors.textPrimary }}>{receiveFormat}</span>
-                <ChevronDown size={12} />
-              </button>
-              {formatDropdownOpen && (
-                <div
-                  className="absolute top-full left-0 mt-1 py-1 rounded-md shadow-lg z-50"
-                  style={{
-                    backgroundColor: colors.bgSidebar,
-                    border: `1px solid ${colors.borderLight}`,
-                    minWidth: '80px'
-                  }}
-                >
-                  {(['Txt', 'Hex'] as ReceiveDisplayFormat[]).map((format) => (
-                    <button
-                      key={format}
-                      onClick={() => {
-                        setReceiveFormat(format);
-                        setFormatDropdownOpen(false);
-                      }}
-                      className="w-full px-3 py-1.5 text-xs text-left transition-colors"
-                      style={{
-                        backgroundColor: receiveFormat === format ? colors.bgHover : 'transparent',
-                        color: receiveFormat === format ? colors.textPrimary : colors.textSecondary
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = colors.bgHover;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = receiveFormat === format ? colors.bgHover : 'transparent';
-                      }}
-                    >
-                      {format}
-                    </button>
-                  ))}
-                </div>
-              )}
+        {/* Row 2 */}
+        <div className="h-8 px-4 flex items-center justify-between" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+          <div className="flex items-center gap-3">
+            {/* Format Select */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.format')}:</span>
+              <Select value={receiveFormat} onValueChange={(v) => setReceiveFormat(v as ReceiveDisplayFormat)}>
+                <SelectTrigger className="h-6 w-16 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Txt">Txt</SelectItem>
+                  <SelectItem value="Hex">Hex</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Timestamp Toggle */}
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center gap-1.5">
               <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.timestamps')}</span>
-              <ToggleSwitch
-                checked={showTimestamps}
-                onChange={setShowTimestamps}
-                title={t('logViewer.toggleTimestamps')}
-              />
+              <Switch checked={showTimestamps} onCheckedChange={setShowTimestamps} />
             </div>
 
             {/* Auto Scroll Toggle */}
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center gap-1.5">
               <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.autoScroll')}</span>
-              <ToggleSwitch
-                checked={autoScrollEnabled}
-                onChange={setAutoScrollEnabled}
-                title={t('logViewer.toggleAutoScroll')}
-              />
+              <Switch checked={autoScrollEnabled} onCheckedChange={setAutoScrollEnabled} />
             </div>
 
             {/* Line Numbers Toggle */}
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center gap-1.5">
               <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.lineNumbers')}</span>
-              <ToggleSwitch
-                checked={showLineNumbers}
-                onChange={setShowLineNumbers}
-                title={t('logViewer.toggleLineNumbers')}
-              />
+              <Switch checked={showLineNumbers} onCheckedChange={setShowLineNumbers} />
             </div>
           </div>
 
           {/* Recording Checkboxes */}
-          <div className="flex items-center space-x-3">
-            {/* Save Text Checkbox */}
-            <label
-              className="flex items-center space-x-1.5 cursor-pointer"
-              title={recordingStatus.text_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.text_file_path}` : t('logViewer.enableTextRecording')}
-            >
-              <input
-                type="checkbox"
-                checked={saveTextEnabled}
-                onChange={(e) => handleSaveTextChange(e.target.checked)}
-                className="w-3.5 h-3.5 rounded"
-                style={{ accentColor: colors.accent }}
-              />
-              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveText')}</span>
-              {recordingStatus.text_recording_active && (
-                <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
-              )}
-            </label>
+          <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <Checkbox checked={saveTextEnabled} onCheckedChange={(checked) => handleSaveTextChange(!!checked)} />
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveText')}</span>
+                    {recordingStatus.text_recording_active && (
+                      <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
+                    )}
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{recordingStatus.text_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.text_file_path}` : t('logViewer.enableTextRecording')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-            {/* Save Raw Checkbox */}
-            <label
-              className="flex items-center space-x-1.5 cursor-pointer"
-              title={recordingStatus.raw_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.raw_file_path}` : t('logViewer.enableRawRecording')}
-            >
-              <input
-                type="checkbox"
-                checked={saveRawEnabled}
-                onChange={(e) => handleSaveRawChange(e.target.checked)}
-                className="w-3.5 h-3.5 rounded"
-                style={{ accentColor: colors.accent }}
-              />
-              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveRaw')}</span>
-              {recordingStatus.raw_recording_active && (
-                <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
-              )}
-            </label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <Checkbox checked={saveRawEnabled} onCheckedChange={(checked) => handleSaveRawChange(!!checked)} />
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveRaw')}</span>
+                    {recordingStatus.raw_recording_active && (
+                      <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
+                    )}
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{recordingStatus.raw_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.raw_file_path}` : t('logViewer.enableRawRecording')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 
-        {/* Row 3: Search bar (visible when search is open) */}
+        {/* Row 3: Search bar */}
         {searchOpen && (
-          <div
-            className="h-8 px-4 flex items-center space-x-2"
-            style={{ borderTop: `1px solid ${colors.borderLight}` }}
-          >
+          <div className="h-8 px-4 flex items-center gap-2" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
             <Search size={14} style={{ color: colors.textTertiary }} />
-            <input
+            <Input
               ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               placeholder={t('logViewer.searchPlaceholder')}
-              className="flex-1 bg-transparent text-xs outline-none"
-              style={{ color: colors.textPrimary }}
+              className="flex-1 h-6 text-xs border-0 bg-transparent focus-visible:ring-0"
             />
             {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="p-0.5 rounded transition-colors"
-                style={{ color: colors.textTertiary }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = colors.textPrimary;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = colors.textTertiary;
-                }}
-                title={t('logViewer.clearSearch')}
-              >
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setSearchQuery('')}>
                 <X size={12} />
-              </button>
+              </Button>
             )}
             <span className="text-xs px-1" style={{ color: colors.textTertiary }}>
               {totalMatches > 0 ? `${currentMatchIndex + 1}/${totalMatches}` : '0/0'}
             </span>
             <div className="flex items-center">
-              <button
-                onClick={goToPrevMatch}
-                disabled={totalMatches === 0}
-                className="p-0.5 rounded transition-colors"
-                style={{
-                  color: totalMatches === 0 ? colors.textTertiary : colors.textSecondary,
-                  opacity: totalMatches === 0 ? 0.5 : 1
-                }}
-                onMouseEnter={(e) => {
-                  if (totalMatches > 0) e.currentTarget.style.color = colors.textPrimary;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = totalMatches === 0 ? colors.textTertiary : colors.textSecondary;
-                }}
-                title={t('logViewer.prevMatch')}
-              >
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={goToPrevMatch} disabled={totalMatches === 0}>
                 <ChevronUp size={14} />
-              </button>
-              <button
-                onClick={goToNextMatch}
-                disabled={totalMatches === 0}
-                className="p-0.5 rounded transition-colors"
-                style={{
-                  color: totalMatches === 0 ? colors.textTertiary : colors.textSecondary,
-                  opacity: totalMatches === 0 ? 0.5 : 1
-                }}
-                onMouseEnter={(e) => {
-                  if (totalMatches > 0) e.currentTarget.style.color = colors.textPrimary;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = totalMatches === 0 ? colors.textTertiary : colors.textSecondary;
-                }}
-                title={t('logViewer.nextMatch')}
-              >
+              </Button>
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={goToNextMatch} disabled={totalMatches === 0}>
                 <ChevronDown size={14} />
-              </button>
+              </Button>
             </div>
-            <button
-              onClick={closeSearch}
-              className="p-0.5 rounded transition-colors"
-              style={{ color: colors.textTertiary }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = colors.textPrimary;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = colors.textTertiary;
-              }}
-              title={t('logViewer.closeSearch')}
-            >
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={closeSearch}>
               <X size={14} />
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -914,10 +655,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
               <Terminal size={48} className="mx-auto mb-4 opacity-50" />
               <p className="text-lg">{t('logViewer.noData')}</p>
               <p className="text-sm mt-2">
-                {isConnected
-                  ? t('logViewer.dataWillAppear')
-                  : t('logViewer.connectToStart')
-                }
+                {isConnected ? t('logViewer.dataWillAppear') : t('logViewer.connectToStart')}
               </p>
             </div>
           </div>
@@ -933,7 +671,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                   backgroundColor: log.direction === 'Sent' ? colors.logSentBg : colors.logReceivedBg
                 }}
               >
-                <div className="flex items-start space-x-2">
+                <div className="flex items-start gap-2">
                   {showLineNumbers && (
                     <span
                       className="text-xs select-none font-mono"
@@ -949,7 +687,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                   )}
                   {showTimestamps && (
                     <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
-                      {/* Use pre-formatted timestamp if available, otherwise format on the fly */}
                       {log.timestamp_formatted ?? formatTimestamp(log.timestamp)}
                     </span>
                   )}
@@ -963,7 +700,6 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                     className="flex-1 break-all font-mono text-sm whitespace-pre-wrap"
                     style={{ color: colors.textPrimary }}
                   >
-                    {/* Use pre-formatted display_text with search highlighting, fallback to on-the-fly formatting */}
                     {renderTextWithHighlights(log.display_text ?? formatData(log.data), index)}
                   </span>
                 </div>
@@ -973,16 +709,12 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         )}
       </div>
 
-      {/* Footer with statistics */}
+      {/* Footer */}
       <div
         className="px-3 py-1 text-xs flex justify-between items-center select-none"
-        style={{
-          backgroundColor: colors.bgHeader,
-          borderTop: `1px solid ${colors.borderDark}`,
-          color: colors.textTertiary
-        }}
+        style={{ backgroundColor: colors.bgHeader, borderTop: `1px solid ${colors.borderDark}`, color: colors.textTertiary }}
       >
-        <div className="flex space-x-4">
+        <div className="flex gap-4">
           <span className="flex items-center">
             <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.accent }}></div>
             {t('logViewer.tx')}: {sentCount}

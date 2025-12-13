@@ -3,12 +3,84 @@
 @tailwind utilities;
 
 @layer base {
+  /* shadcn/ui CSS Variables - Dark Theme (default) */
+  :root {
+    --background: 0 0% 12%;           /* #1e1e1e - bgMain */
+    --foreground: 0 0% 100%;          /* #ffffff - textPrimary */
+
+    --card: 0 0% 15%;                 /* #262626 - bgSidebar */
+    --card-foreground: 0 0% 100%;     /* #ffffff */
+
+    --popover: 0 0% 15%;              /* #262626 */
+    --popover-foreground: 0 0% 100%;  /* #ffffff */
+
+    --primary: 213 100% 52%;          /* #0A84FF - accent */
+    --primary-foreground: 0 0% 100%;  /* #ffffff */
+
+    --secondary: 0 0% 20%;            /* #333333 - bgSurface */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 0 0% 18%;                /* #2d2d2d - bgHeader */
+    --muted-foreground: 0 0% 63%;     /* #a0a0a0 - textSecondary */
+
+    --accent: 0 0% 20%;               /* for hover states */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 73% 61%;         /* #FF453A - danger */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 100% / 0.1;        /* rgba(255,255,255,0.1) */
+    --input: 0 0% 100% / 0.1;         /* rgba(255,255,255,0.1) */
+    --ring: 213 100% 52%;             /* #0A84FF - accent */
+
+    --radius: 0.5rem;
+
+    /* Additional custom properties for app-specific colors */
+    --success: 142 69% 52%;           /* #30D158 */
+    --warning: 51 100% 52%;           /* #FFD60A */
+  }
+
+  /* Light Theme */
+  [data-theme="light"] {
+    --background: 0 0% 96%;           /* #f5f5f7 - bgMain */
+    --foreground: 0 0% 11%;           /* #1d1d1f - textPrimary */
+
+    --card: 0 0% 100%;                /* #ffffff - bgSidebar */
+    --card-foreground: 0 0% 11%;      /* #1d1d1f */
+
+    --popover: 0 0% 100%;             /* #ffffff */
+    --popover-foreground: 0 0% 11%;   /* #1d1d1f */
+
+    --primary: 213 100% 52%;          /* #0A84FF - accent */
+    --primary-foreground: 0 0% 100%;  /* #ffffff */
+
+    --secondary: 0 0% 96%;            /* #f5f5f7 - bgSurface */
+    --secondary-foreground: 0 0% 11%;
+
+    --muted: 0 0% 96%;                /* #f5f5f7 - bgHeader */
+    --muted-foreground: 0 0% 43%;     /* #6e6e73 - textSecondary */
+
+    --accent: 0 0% 0% / 0.05;         /* for hover states */
+    --accent-foreground: 0 0% 11%;
+
+    --destructive: 0 73% 61%;         /* #FF453A - danger */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 0% / 0.1;          /* rgba(0,0,0,0.1) */
+    --input: 0 0% 0% / 0.1;           /* rgba(0,0,0,0.1) */
+    --ring: 213 100% 52%;             /* #0A84FF - accent */
+  }
+
+  * {
+    @apply border-border;
+  }
+
   html {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
   }
 
   body {
-    @apply antialiased bg-macos-main text-white;
+    @apply antialiased bg-background text-foreground;
   }
 
   /* macOS-style scrollbar - Dark theme (default) */
@@ -53,79 +125,79 @@
   .panel {
     @apply bg-macos-header rounded-lg border border-white/10 shadow-lg;
   }
-  
+
   .panel-header {
     @apply px-4 py-3 border-b border-white/5 bg-macos-sidebar rounded-t-lg;
   }
-  
+
   .panel-content {
     @apply p-4;
   }
-  
+
   .btn-primary {
     @apply bg-macos-accent hover:bg-[#0071e3] text-white font-medium py-2 px-4 rounded-[6px] shadow-macos-btn transition-all duration-200 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-macos-accent/50 disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .btn-secondary {
     @apply bg-white/5 hover:bg-white/10 text-white font-medium py-2 px-4 rounded-[6px] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .btn-danger {
     @apply bg-macos-danger hover:bg-red-600 text-white font-medium py-2 px-4 rounded-[6px] shadow-macos-btn transition-all duration-200 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-macos-danger/50 disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .btn-success {
     @apply bg-macos-success hover:bg-green-600 text-white font-medium py-2 px-4 rounded-[6px] shadow-macos-btn transition-all duration-200 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-macos-success/50 disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .input-field {
     @apply w-full px-3 py-2 bg-black/20 border border-white/10 rounded-[6px] text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-macos-accent/50 shadow-inner disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .select-field {
     @apply w-full px-3 py-2 bg-white/5 hover:bg-white/10 border border-transparent rounded-[6px] text-white focus:outline-none focus:ring-2 focus:ring-macos-accent/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .log-entry {
     @apply py-1 px-2 border-l-2 border-transparent font-mono text-sm hover:bg-white/5 transition-colors duration-150 rounded-[4px];
   }
-  
+
   .log-entry.sent {
     @apply border-l-macos-accent bg-macos-accent/5;
   }
-  
+
   .log-entry.received {
     @apply border-l-macos-success bg-macos-success/5;
   }
-  
+
   .log-timestamp {
     @apply text-gray-500 text-xs mr-2 opacity-60;
   }
-  
+
   .log-direction {
     @apply font-bold mr-2 text-xs uppercase;
   }
-  
+
   .log-direction.sent {
     @apply text-macos-accent;
   }
-  
+
   .log-direction.received {
     @apply text-macos-success;
   }
-  
+
   .status-indicator {
     @apply inline-block w-2 h-2 rounded-full;
   }
-  
+
   .status-connected {
     @apply bg-macos-success animate-pulse-slow;
   }
-  
+
   .status-disconnected {
     @apply bg-gray-500;
   }
-  
+
   .status-connecting {
     @apply bg-macos-warning animate-pulse;
   }

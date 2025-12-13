@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
-import { Settings, Edit3, X } from 'lucide-react';
+import { Edit3, X } from 'lucide-react';
 import { SerialConfig, DataBits, Parity, StopBits, FlowControl } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
+
+// shadcn components
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ConfigPanelProps {
   config: SerialConfig;
@@ -20,17 +28,16 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
     onChange({ ...config, [key]: value });
   };
 
-  // 预设的波特率选项
   const baudRateOptions = [
-    300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 56000, 
-    57600, 115200, 128000, 230400, 256000, 460800, 512000, 750000, 
+    300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 56000,
+    57600, 115200, 128000, 230400, 256000, 460800, 512000, 750000,
     921600, 1500000, 2000000
   ];
 
-  const handleBaudRateSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = parseInt(e.target.value);
-    if (!isNaN(value)) {
-      updateConfig('baud_rate', value);
+  const handleBaudRateSelectChange = (value: string) => {
+    const numValue = parseInt(value);
+    if (!isNaN(numValue)) {
+      updateConfig('baud_rate', numValue);
     }
   };
 
@@ -45,11 +52,9 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
 
   const toggleCustomBaudRate = () => {
     if (isCustomBaudRate) {
-      // 切换回下拉框模式，设置默认值为115200
       setIsCustomBaudRate(false);
       updateConfig('baud_rate', 115200);
     } else {
-      // 切换到自定义模式，设置默认值为9600
       setIsCustomBaudRate(true);
       setCustomBaudRate('9600');
       updateConfig('baud_rate', 9600);
@@ -60,203 +65,178 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
     <div className="p-4 space-y-5">
       {/* Baud Rate Group */}
       <div className="space-y-3">
-        <div className="flex items-center space-x-2 mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>{t('configPanel.communication')}</span>
-        </div>
+        <Label className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>
+          {t('configPanel.communication')}
+        </Label>
 
         <div>
-          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+          <Label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             {t('configPanel.baudRate')}
-          </label>
-          <div className="flex items-center space-x-2">
+          </Label>
+          <div className="flex items-center gap-2">
             {isCustomBaudRate ? (
-              <input
+              <Input
                 type="number"
                 value={customBaudRate}
                 onChange={handleCustomBaudRateChange}
-                className="flex-1 text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  backgroundColor: colors.bgInput,
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textPrimary,
-                  '--tw-ring-color': `${colors.accent}80`
-                } as React.CSSProperties}
+                className="flex-1 h-9"
                 disabled={disabled}
                 placeholder="9600"
-                min="1"
+                min={1}
               />
             ) : (
-              <select
-                value={config.baud_rate}
-                onChange={handleBaudRateSelectChange}
-                className="flex-1 text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  backgroundColor: colors.buttonSecondaryBg,
-                  border: `1px solid transparent`,
-                  color: colors.textPrimary,
-                  '--tw-ring-color': `${colors.accent}80`
-                } as React.CSSProperties}
+              <Select
+                value={config.baud_rate.toString()}
+                onValueChange={handleBaudRateSelectChange}
                 disabled={disabled}
               >
-                {baudRateOptions.map((rate) => (
-                  <option key={rate} value={rate} style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>
-                    {rate}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="flex-1 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {baudRateOptions.map((rate) => (
+                    <SelectItem key={rate} value={rate.toString()}>
+                      {rate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
-            <button
-              onClick={toggleCustomBaudRate}
-              className="p-2 rounded-[6px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: colors.buttonSecondaryBg,
-                border: `1px solid ${colors.borderLight}`,
-                color: colors.textSecondary
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
-              disabled={disabled}
-              title={isCustomBaudRate ? t('configPanel.switchToPreset') : t('configPanel.enterCustomBaudRate')}
-            >
-              {isCustomBaudRate ? <X size={14} /> : <Edit3 size={14} />}
-            </button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={toggleCustomBaudRate}
+                    disabled={disabled}
+                  >
+                    {isCustomBaudRate ? <X size={14} /> : <Edit3 size={14} />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isCustomBaudRate ? t('configPanel.switchToPreset') : t('configPanel.enterCustomBaudRate')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </div>
 
       {/* Parameters Group */}
       <div className="space-y-3">
-        <div className="flex items-center space-x-2 mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>{t('configPanel.parameters')}</span>
-        </div>
+        <Label className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>
+          {t('configPanel.parameters')}
+        </Label>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+            <Label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
               {t('configPanel.dataBits')}
-            </label>
-            <select
+            </Label>
+            <Select
               value={config.data_bits}
-              onChange={(e) => updateConfig('data_bits', e.target.value as DataBits)}
-              className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: colors.buttonSecondaryBg,
-                border: `1px solid transparent`,
-                color: colors.textPrimary,
-                '--tw-ring-color': `${colors.accent}80`
-              } as React.CSSProperties}
+              onValueChange={(v) => updateConfig('data_bits', v as DataBits)}
               disabled={disabled}
             >
-              <option value="Five" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>5</option>
-              <option value="Six" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>6</option>
-              <option value="Seven" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>7</option>
-              <option value="Eight" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>8</option>
-            </select>
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Five">5</SelectItem>
+                <SelectItem value="Six">6</SelectItem>
+                <SelectItem value="Seven">7</SelectItem>
+                <SelectItem value="Eight">8</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
-            <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+            <Label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
               {t('configPanel.stopBits')}
-            </label>
-            <select
+            </Label>
+            <Select
               value={config.stop_bits}
-              onChange={(e) => updateConfig('stop_bits', e.target.value as StopBits)}
-              className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: colors.buttonSecondaryBg,
-                border: `1px solid transparent`,
-                color: colors.textPrimary,
-                '--tw-ring-color': `${colors.accent}80`
-              } as React.CSSProperties}
+              onValueChange={(v) => updateConfig('stop_bits', v as StopBits)}
               disabled={disabled}
             >
-              <option value="One" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>1</option>
-              <option value="OnePointFive" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>1.5</option>
-              <option value="Two" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>2</option>
-            </select>
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="One">1</SelectItem>
+                <SelectItem value="OnePointFive">1.5</SelectItem>
+                <SelectItem value="Two">2</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         <div>
-          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+          <Label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             {t('configPanel.parity')}
-          </label>
-          <select
+          </Label>
+          <Select
             value={config.parity}
-            onChange={(e) => updateConfig('parity', e.target.value as Parity)}
-            className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: colors.buttonSecondaryBg,
-              border: `1px solid transparent`,
-              color: colors.textPrimary,
-              '--tw-ring-color': `${colors.accent}80`
-            } as React.CSSProperties}
+            onValueChange={(v) => updateConfig('parity', v as Parity)}
             disabled={disabled}
           >
-            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityNone')}</option>
-            <option value="Odd" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityOdd')}</option>
-            <option value="Even" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityEven')}</option>
-            <option value="Mark" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.parityMark')}</option>
-            <option value="Space" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.paritySpace')}</option>
-          </select>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="None">{t('configPanel.parityNone')}</SelectItem>
+              <SelectItem value="Odd">{t('configPanel.parityOdd')}</SelectItem>
+              <SelectItem value="Even">{t('configPanel.parityEven')}</SelectItem>
+              <SelectItem value="Mark">{t('configPanel.parityMark')}</SelectItem>
+              <SelectItem value="Space">{t('configPanel.paritySpace')}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div>
-          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+          <Label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             {t('configPanel.flowControl')}
-          </label>
-          <select
+          </Label>
+          <Select
             value={config.flow_control}
-            onChange={(e) => updateConfig('flow_control', e.target.value as FlowControl)}
-            className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: colors.buttonSecondaryBg,
-              border: `1px solid transparent`,
-              color: colors.textPrimary,
-              '--tw-ring-color': `${colors.accent}80`
-            } as React.CSSProperties}
+            onValueChange={(v) => updateConfig('flow_control', v as FlowControl)}
             disabled={disabled}
           >
-            <option value="None" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.flowControlNone')}</option>
-            <option value="Software" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.flowControlSoftware')}</option>
-            <option value="Hardware" style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>{t('configPanel.flowControlHardware')}</option>
-          </select>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="None">{t('configPanel.flowControlNone')}</SelectItem>
+              <SelectItem value="Software">{t('configPanel.flowControlSoftware')}</SelectItem>
+              <SelectItem value="Hardware">{t('configPanel.flowControlHardware')}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div>
-          <label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
+          <Label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             {t('configPanel.timeout')}
-          </label>
-          <input
+          </Label>
+          <Input
             type="number"
             value={config.timeout}
             onChange={(e) => updateConfig('timeout', parseInt(e.target.value) || 1000)}
-            className="w-full text-sm px-3 py-2 rounded-[6px] focus:outline-none focus:ring-2 shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: colors.bgInput,
-              border: `1px solid ${colors.border}`,
-              color: colors.textPrimary,
-              '--tw-ring-color': `${colors.accent}80`
-            } as React.CSSProperties}
+            className="h-9"
             disabled={disabled}
-            min="1"
-            max="10000"
+            min={1}
+            max={10000}
             placeholder="1000"
           />
         </div>
       </div>
 
       {disabled && (
-        <div
-          className="p-3 rounded-[6px]"
-          style={{
-            backgroundColor: `${colors.warning}20`,
-            border: `1px solid ${colors.warning}30`
-          }}
-        >
-          <p className="text-xs" style={{ color: colors.warning }}>
+        <Alert variant="warning" className="py-2">
+          <AlertDescription className="text-xs">
             {t('configPanel.disconnectToModify')}
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

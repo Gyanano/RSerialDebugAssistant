@@ -1,12 +1,19 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { Send, Type, Hash, Clock, Play, Pause, Shield, ChevronDown, ChevronUp, List, FileText } from 'lucide-react';
+import { Send, Shield, ChevronDown, ChevronUp, List, FileText } from 'lucide-react';
 import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding } from '../types';
-import ToggleSwitch from './ToggleSwitch';
 import QuickCommandPanel from './QuickCommandPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { getChecksumLength, calculateChecksum } from '../utils/checksum';
 import { getTextEncoding, textToHex as encodeTextToHex, hexToText as decodeHexToText } from '../utils/encoding';
+
+// shadcn components
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type SendMode = 'normal' | 'quickCommand';
 
@@ -352,32 +359,55 @@ const SendPanel: React.FC<SendPanelProps> = ({
             {/* Checksum Type Selector */}
             <div className="flex items-center space-x-2">
               <Shield size={12} style={{ color: colors.textTertiary }} />
-              <select
-                value={checksumConfig.type}
-                onChange={(e) => onChecksumConfigChange({ ...checksumConfig, type: e.target.value as ChecksumType })}
-                className="text-xs py-0.5 px-2 rounded-[4px] focus:outline-none"
-                style={{
-                  backgroundColor: checksumConfig.type !== 'None' ? colors.accent : colors.bgInput,
-                  border: `1px solid ${colors.borderLight}`,
-                  color: checksumConfig.type !== 'None' ? '#ffffff' : colors.textSecondary
-                }}
-                title={t('sendPanel.checksumAlgorithm')}
-              >
-                {checksumTypes.map((type) => (
-                  <option key={type} value={type} style={{ backgroundColor: colors.bgSidebar, color: colors.textPrimary }}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Select
+                        value={checksumConfig.type}
+                        onValueChange={(value) => onChecksumConfigChange({ ...checksumConfig, type: value as ChecksumType })}
+                      >
+                        <SelectTrigger
+                          className="h-6 w-[100px] text-xs"
+                          style={{
+                            backgroundColor: checksumConfig.type !== 'None' ? colors.accent : colors.bgInput,
+                            borderColor: colors.borderLight,
+                            color: checksumConfig.type !== 'None' ? '#ffffff' : colors.textSecondary
+                          }}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {checksumTypes.map((type) => (
+                            <SelectItem key={type} value={type}>{type}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t('sendPanel.checksumAlgorithm')}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               {checksumConfig.type !== 'None' && (
-                <button
-                  onClick={() => setIsChecksumExpanded(!isChecksumExpanded)}
-                  className="p-0.5 rounded transition-colors"
-                  style={{ color: colors.textSecondary }}
-                  title={isChecksumExpanded ? t('sendPanel.hideChecksumOptions') : t('sendPanel.showChecksumOptions')}
-                >
-                  {isChecksumExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                </button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => setIsChecksumExpanded(!isChecksumExpanded)}
+                      >
+                        {isChecksumExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isChecksumExpanded ? t('sendPanel.hideChecksumOptions') : t('sendPanel.showChecksumOptions')}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
 
@@ -425,35 +455,41 @@ const SendPanel: React.FC<SendPanelProps> = ({
               <span className="text-xs" style={{ color: colors.textTertiary }}>{t('sendPanel.range')}:</span>
               <div className="flex items-center space-x-2">
                 <span className="text-xs" style={{ color: colors.textSecondary }}>{t('sendPanel.start')}</span>
-                <input
-                  type="number"
-                  value={checksumConfig.startIndex}
-                  onChange={(e) => onChecksumConfigChange({ ...checksumConfig, startIndex: Math.max(0, parseInt(e.target.value) || 0) })}
-                  className="w-14 text-xs px-2 py-0.5 rounded text-center focus:outline-none"
-                  style={{
-                    backgroundColor: colors.bgInput,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary
-                  }}
-                  min="0"
-                  title={t('sendPanel.startIndexTitle')}
-                />
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Input
+                        type="number"
+                        value={checksumConfig.startIndex}
+                        onChange={(e) => onChecksumConfigChange({ ...checksumConfig, startIndex: Math.max(0, parseInt(e.target.value) || 0) })}
+                        className="w-14 h-6 text-xs text-center"
+                        min={0}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{t('sendPanel.startIndexTitle')}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="text-xs" style={{ color: colors.textSecondary }}>{t('sendPanel.end')}</span>
-                <input
-                  type="number"
-                  value={checksumConfig.endIndex}
-                  onChange={(e) => onChecksumConfigChange({ ...checksumConfig, endIndex: Math.min(0, parseInt(e.target.value) || 0) })}
-                  className="w-14 text-xs px-2 py-0.5 rounded text-center focus:outline-none"
-                  style={{
-                    backgroundColor: colors.bgInput,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary
-                  }}
-                  max="0"
-                  title={t('sendPanel.endIndexTitle')}
-                />
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Input
+                        type="number"
+                        value={checksumConfig.endIndex}
+                        onChange={(e) => onChecksumConfigChange({ ...checksumConfig, endIndex: Math.min(0, parseInt(e.target.value) || 0) })}
+                        className="w-14 h-6 text-xs text-center"
+                        max={0}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{t('sendPanel.endIndexTitle')}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <span className="text-xs" style={{ color: colors.textTertiary }}>
                 {t('sendPanel.indexHint')}
@@ -467,19 +503,13 @@ const SendPanel: React.FC<SendPanelProps> = ({
             <div className="flex-1 flex space-x-3 min-h-0">
               {/* Text Input */}
               <div className="flex-1 flex flex-col min-h-0">
-                <textarea
+                <Textarea
                   ref={textareaRef}
                   value={value}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   placeholder={getPlaceholderText()}
-                  className="flex-1 w-full min-h-[60px] resize-none rounded-[6px] p-3 text-sm font-mono focus:outline-none focus:ring-2 shadow-inner"
-                  style={{
-                    backgroundColor: colors.bgMain,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary,
-                    '--tw-ring-color': `${colors.accent}80`
-                  } as React.CSSProperties}
+                  className="flex-1 w-full min-h-[60px] resize-none text-sm font-mono shadow-inner"
                 />
 
                 <div className="flex items-center justify-between mt-2 text-xs flex-shrink-0" style={{ color: colors.textTertiary }}>
@@ -504,19 +534,13 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
               {/* Controls */}
               <div className="w-40 flex flex-col space-y-2 flex-shrink-0">
-                <button
+                <Button
                   onClick={handleSendClick}
                   disabled={isNormalSendDisabled}
-                  className="w-full h-9 font-medium rounded-[6px] shadow-macos-btn transition-all active:scale-[0.98] flex items-center justify-center space-x-2"
-                  style={{
-                    backgroundColor: !isNormalSendDisabled ? colors.accent : colors.bgSurface,
-                    color: !isNormalSendDisabled ? '#ffffff' : colors.textTertiary,
-                    opacity: isNormalSendDisabled ? 0.5 : 1,
-                    cursor: isNormalSendDisabled ? 'not-allowed' : 'pointer'
-                  }}
+                  className="w-full h-9"
                 >
                   <span className="text-sm">{isScheduledEnabled ? t('sendPanel.scheduledActive') : t('sendPanel.send')}</span>
-                </button>
+                </Button>
 
                 <div
                   className="rounded-[6px] p-2"
@@ -524,29 +548,42 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs" style={{ color: colors.textTertiary }}>{t('sendPanel.cycle')}</span>
-                    <ToggleSwitch
-                      checked={isScheduledEnabled}
-                      onChange={handleScheduledToggle}
-                      disabled={!isConnected}
-                      title={isScheduledEnabled ? t('sendPanel.stopScheduled') : t('sendPanel.startScheduled')}
-                    />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Switch
+                              checked={isScheduledEnabled}
+                              onCheckedChange={handleScheduledToggle}
+                              disabled={!isConnected}
+                            />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{isScheduledEnabled ? t('sendPanel.stopScheduled') : t('sendPanel.startScheduled')}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
-                  <input
-                    type="number"
-                    value={scheduledInterval}
-                    onChange={handleIntervalChange}
-                    className="w-full rounded px-2 py-1 text-xs text-right focus:outline-none"
-                    style={{
-                      backgroundColor: colors.bgMain,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.textSecondary
-                    }}
-                    min="100"
-                    max="60000"
-                    step="100"
-                    disabled={!isConnected || isScheduledRunning}
-                    title={t('sendPanel.intervalTitle')}
-                  />
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Input
+                          type="number"
+                          value={scheduledInterval}
+                          onChange={handleIntervalChange}
+                          className="w-full h-7 text-xs text-right"
+                          min={100}
+                          max={60000}
+                          step={100}
+                          disabled={!isConnected || isScheduledRunning}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{t('sendPanel.intervalTitle')}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             </div>
@@ -562,22 +599,24 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {commonHexValues.map((item) => (
-                    <button
-                      key={item.value}
-                      onClick={() => insertCommonHex(item.value)}
-                      className="text-xs px-2.5 py-1 rounded-[4px] font-mono transition-colors"
-                      style={{
-                        backgroundColor: colors.buttonSecondaryBg,
-                        border: `1px solid ${colors.borderLight}`,
-                        color: colors.textSecondary
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
-                      disabled={!isConnected}
-                      title={t(item.descKey)}
-                    >
-                      {item.label}
-                    </button>
+                    <TooltipProvider key={item.value}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="text-xs px-2.5 py-1 h-7 font-mono"
+                            onClick={() => insertCommonHex(item.value)}
+                            disabled={!isConnected}
+                          >
+                            {item.label}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{t(item.descKey)}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   ))}
                 </div>
               </div>

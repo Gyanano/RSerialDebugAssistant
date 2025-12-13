@@ -1,9 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Send, ChevronDown, Edit2, Check, X, Trash2, Play, Square, RefreshCw } from 'lucide-react';
+import { Plus, ChevronDown, Edit2, Check, X, Trash2, Play, Square, RefreshCw } from 'lucide-react';
 import { QuickCommand, QuickCommandList, LineEnding } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { getTextEncoding, textToHex, hexToText } from '../utils/encoding';
+
+// shadcn components
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const LOOP_INTERVAL_KEY = 'quickCommandLoopInterval';
 const DEFAULT_LOOP_INTERVAL = 1000;
@@ -293,14 +300,21 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
           }}
         >
           <div className="w-7 flex justify-center">
-            <input
-              type="checkbox"
-              checked={currentList.commands.length > 0 && currentList.commands.every(c => c.selected)}
-              onChange={handleSelectAll}
-              className="w-3.5 h-3.5 rounded cursor-pointer"
-              style={{ accentColor: colors.accent }}
-              title={t('quickCommand.selectAll')}
-            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Checkbox
+                      checked={currentList.commands.length > 0 && currentList.commands.every(c => c.selected)}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('quickCommand.selectAll')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <div className="w-24 text-center">{t('quickCommand.name')}</div>
           <div className="w-12 text-center">HEX</div>
@@ -321,105 +335,94 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
           >
             {/* Selection Checkbox */}
             <div className="w-7 flex justify-center">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={command.selected}
-                onChange={(e) => handleCommandChange(index, 'selected', e.target.checked)}
-                className="w-3.5 h-3.5 rounded cursor-pointer"
-                style={{ accentColor: colors.accent }}
+                onCheckedChange={(checked) => handleCommandChange(index, 'selected', checked)}
               />
             </div>
 
             {/* Name Input */}
             <div className="w-24 px-1">
-              <input
-                type="text"
-                value={command.name || ''}
-                onChange={(e) => handleCommandChange(index, 'name', e.target.value)}
-                placeholder=""
-                className="w-full px-1.5 py-1 text-xs rounded focus:outline-none focus:ring-1"
-                style={{
-                  backgroundColor: colors.bgInput,
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textPrimary,
-                  '--tw-ring-color': colors.accent
-                } as React.CSSProperties}
-                title={t('quickCommand.namePlaceholder')}
-              />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Input
+                      type="text"
+                      value={command.name || ''}
+                      onChange={(e) => handleCommandChange(index, 'name', e.target.value)}
+                      placeholder=""
+                      className="w-full h-7 px-1.5 text-xs"
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t('quickCommand.namePlaceholder')}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
 
             {/* HEX Toggle */}
             <div className="w-12 flex justify-center">
-              <button
+              <Button
+                variant={command.isHex ? 'default' : 'secondary'}
+                size="sm"
+                className="px-1.5 py-0.5 h-6 text-xs font-mono"
                 onClick={() => handleHexToggle(index)}
-                className="px-1.5 py-0.5 text-xs font-mono rounded transition-colors"
-                style={{
-                  backgroundColor: command.isHex ? colors.accent : colors.bgInput,
-                  color: command.isHex ? '#ffffff' : colors.textTertiary,
-                  border: `1px solid ${command.isHex ? colors.accent : colors.border}`,
-                  opacity: convertingIndex === index ? 0.5 : 1
-                }}
                 disabled={convertingIndex === index}
               >
                 HEX
-              </button>
+              </Button>
             </div>
 
             {/* Command Input */}
             <div className="flex-1 px-2">
-              <input
+              <Input
                 type="text"
                 value={command.content}
                 onChange={(e) => handleCommandChange(index, 'content', e.target.value)}
                 placeholder={command.isHex ? t('quickCommand.hexPlaceholder') : t('quickCommand.textPlaceholder')}
-                className="w-full px-2 py-1 text-sm font-mono rounded focus:outline-none focus:ring-1"
-                style={{
-                  backgroundColor: colors.bgInput,
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textPrimary,
-                  '--tw-ring-color': colors.accent,
-                  opacity: convertingIndex === index ? 0.5 : 1
-                } as React.CSSProperties}
+                className="w-full h-7 text-sm font-mono"
                 disabled={convertingIndex === index}
               />
             </div>
 
             {/* Line Ending Dropdown */}
             <div className="w-20 flex justify-center">
-              <select
+              <Select
                 value={command.lineEnding}
-                onChange={(e) => handleCommandChange(index, 'lineEnding', e.target.value as LineEnding)}
-                className="w-full px-1 py-1 text-xs rounded focus:outline-none"
-                style={{
-                  backgroundColor: colors.bgInput,
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textSecondary
-                }}
+                onValueChange={(value) => handleCommandChange(index, 'lineEnding', value as LineEnding)}
               >
-                {lineEndingOptions.map(opt => (
-                  <option key={opt.value} value={opt.value} style={{ backgroundColor: colors.bgSidebar }}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-7 w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {lineEndingOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Send Button with Index */}
             <div className="w-12 flex justify-center">
-              <button
-                onClick={() => handleSendSingle(command)}
-                disabled={disabled || !command.content.trim()}
-                className="px-2 py-1 text-xs font-medium rounded transition-all"
-                style={{
-                  backgroundColor: !disabled && command.content.trim() ? colors.accent : colors.bgSurface,
-                  color: !disabled && command.content.trim() ? '#ffffff' : colors.textTertiary,
-                  opacity: disabled || !command.content.trim() ? 0.5 : 1,
-                  cursor: disabled || !command.content.trim() ? 'not-allowed' : 'pointer'
-                }}
-                title={`${t('quickCommand.sendCommand')} #${index + 1}`}
-              >
-                {index + 1}
-              </button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={!disabled && command.content.trim() ? 'default' : 'secondary'}
+                      size="sm"
+                      className="px-2 py-1 h-6 text-xs font-medium"
+                      onClick={() => handleSendSingle(command)}
+                      disabled={disabled || !command.content.trim()}
+                    >
+                      {index + 1}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{`${t('quickCommand.sendCommand')} #${index + 1}`}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         ))}
@@ -427,18 +430,15 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
         {/* Add More Button */}
         {currentList.commands.length < MAX_COMMANDS && (
           <div className="flex justify-center py-3">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleAddMoreCommands}
-              className="flex items-center space-x-1.5 px-4 py-1.5 text-xs rounded-md transition-colors"
-              style={{
-                backgroundColor: colors.bgInput,
-                border: `1px solid ${colors.border}`,
-                color: colors.textSecondary
-              }}
+              className="flex items-center space-x-1.5 text-xs"
             >
               <Plus size={14} />
               <span>{t('quickCommand.addMore')} ({currentList.commands.length}/{MAX_COMMANDS})</span>
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -453,18 +453,15 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
       >
         {/* List Selector */}
         <div className="relative" ref={dropdownRef}>
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setIsListDropdownOpen(!isListDropdownOpen)}
-            className="flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-colors"
-            style={{
-              backgroundColor: colors.bgInput,
-              border: `1px solid ${colors.border}`,
-              color: colors.textPrimary
-            }}
+            className="flex items-center space-x-2"
           >
             <span className="max-w-32 truncate">{currentList.name}</span>
-            <ChevronDown size={14} style={{ color: colors.textTertiary }} />
-          </button>
+            <ChevronDown size={14} />
+          </Button>
 
           {/* Dropdown Menu */}
           {isListDropdownOpen && (
@@ -500,28 +497,23 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   >
                     {editingListId === list.id ? (
                       <div className="flex-1 flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
-                        <input
+                        <Input
                           type="text"
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
-                          className="flex-1 px-2 py-0.5 text-sm rounded focus:outline-none"
-                          style={{
-                            backgroundColor: colors.bgInput,
-                            border: `1px solid ${colors.accent}`,
-                            color: colors.textPrimary
-                          }}
+                          className="flex-1 h-7 text-sm"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSaveEditName();
                             if (e.key === 'Escape') handleCancelEditName();
                           }}
                         />
-                        <button onClick={handleSaveEditName} className="p-1 rounded" style={{ color: colors.success }}>
-                          <Check size={14} />
-                        </button>
-                        <button onClick={handleCancelEditName} className="p-1 rounded" style={{ color: colors.error }}>
-                          <X size={14} />
-                        </button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleSaveEditName}>
+                          <Check size={14} style={{ color: colors.success }} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCancelEditName}>
+                          <X size={14} style={{ color: colors.error }} />
+                        </Button>
                       </div>
                     ) : (
                       <>
@@ -529,29 +521,47 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                           {list.name}
                         </span>
                         <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartEditName(list);
-                            }}
-                            className="p-1 rounded hover:bg-opacity-20"
-                            style={{ color: colors.textTertiary }}
-                            title={t('quickCommand.rename')}
-                          >
-                            <Edit2 size={12} />
-                          </button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditName(list);
+                                  }}
+                                >
+                                  <Edit2 size={12} />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{t('quickCommand.rename')}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                           {lists.length > 1 && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteList(list.id);
-                              }}
-                              className="p-1 rounded hover:bg-opacity-20"
-                              style={{ color: colors.error }}
-                              title={t('quickCommand.delete')}
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteList(list.id);
+                                    }}
+                                  >
+                                    <Trash2 size={12} style={{ color: colors.error }} />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{t('quickCommand.delete')}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                         </div>
                       </>
@@ -582,24 +592,25 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
         <div className="flex items-center space-x-2">
           {/* Loop Interval Input */}
           <div className="flex items-center space-x-1">
-            <input
-              type="number"
-              value={loopInterval}
-              onChange={(e) => handleLoopIntervalChange(e.target.value)}
-              onBlur={(e) => handleLoopIntervalChange(e.target.value)}
-              min={MIN_LOOP_INTERVAL}
-              max={MAX_LOOP_INTERVAL}
-              disabled={disabled || isLooping}
-              className="w-16 px-2 py-1 text-xs font-mono rounded focus:outline-none focus:ring-1 text-center"
-              style={{
-                backgroundColor: colors.bgInput,
-                border: `1px solid ${colors.border}`,
-                color: colors.textPrimary,
-                '--tw-ring-color': colors.accent,
-                opacity: isLooping ? 0.5 : 1
-              } as React.CSSProperties}
-              title={t('quickCommand.loopIntervalTitle')}
-            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Input
+                    type="number"
+                    value={loopInterval}
+                    onChange={(e) => handleLoopIntervalChange(e.target.value)}
+                    onBlur={(e) => handleLoopIntervalChange(e.target.value)}
+                    min={MIN_LOOP_INTERVAL}
+                    max={MAX_LOOP_INTERVAL}
+                    disabled={disabled || isLooping}
+                    className="w-24 h-7 text-xs font-mono text-center"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('quickCommand.loopIntervalTitle')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <span className="text-xs" style={{ color: colors.textTertiary }}>ms</span>
           </div>
 
@@ -619,51 +630,48 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
 
           {/* Loop Send / Stop Button */}
           {isLooping ? (
-            <button
+            <Button
+              variant="destructive"
+              size="sm"
               onClick={stopLoop}
-              className="flex items-center space-x-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all"
-              style={{
-                backgroundColor: colors.error,
-                color: '#ffffff',
-                cursor: 'pointer'
-              }}
+              className="flex items-center space-x-2"
             >
               <Square size={14} />
               <span>{t('quickCommand.stop')}</span>
-            </button>
+            </Button>
           ) : (
-            <button
-              onClick={startLoop}
-              disabled={disabled || selectedCount === 0}
-              className="flex items-center space-x-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all"
-              style={{
-                backgroundColor: !disabled && selectedCount > 0 ? colors.success : colors.bgSurface,
-                color: !disabled && selectedCount > 0 ? '#ffffff' : colors.textTertiary,
-                opacity: disabled || selectedCount === 0 ? 0.5 : 1,
-                cursor: disabled || selectedCount === 0 ? 'not-allowed' : 'pointer'
-              }}
-              title={t('quickCommand.loopSendTitle')}
-            >
-              <RefreshCw size={14} />
-              <span>{t('quickCommand.loopSend')}</span>
-            </button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={startLoop}
+                    disabled={disabled || selectedCount === 0}
+                    className="flex items-center space-x-2"
+                  >
+                    <RefreshCw size={14} />
+                    <span>{t('quickCommand.loopSend')}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('quickCommand.loopSendTitle')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
 
           {/* Send Selected Button */}
-          <button
+          <Button
+            variant="default"
+            size="sm"
             onClick={handleSendAllSelected}
             disabled={disabled || selectedCount === 0 || isLooping}
-            className="flex items-center space-x-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all"
-            style={{
-              backgroundColor: !disabled && selectedCount > 0 && !isLooping ? colors.accent : colors.bgSurface,
-              color: !disabled && selectedCount > 0 && !isLooping ? '#ffffff' : colors.textTertiary,
-              opacity: disabled || selectedCount === 0 || isLooping ? 0.5 : 1,
-              cursor: disabled || selectedCount === 0 || isLooping ? 'not-allowed' : 'pointer'
-            }}
+            className="flex items-center space-x-2"
           >
             <Play size={14} />
             <span>{t('quickCommand.listSend')} {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
-          </button>
+          </Button>
         </div>
       </div>
     </div>

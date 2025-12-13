@@ -876,7 +876,7 @@ function App() {
       />
 
       {/* Settings Modal */}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      <SettingsModal open={showSettings} onOpenChange={setShowSettings} />
     </div>
   );
 }

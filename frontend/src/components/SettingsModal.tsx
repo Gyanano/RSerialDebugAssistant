@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { X, Folder, Moon, Sun, ChevronDown, ChevronUp, Loader2, ExternalLink, Download, CheckCircle, AlertCircle } from 'lucide-react';
+import { Folder, Moon, Sun, ChevronDown, ChevronUp, Loader2, ExternalLink, Download, CheckCircle, AlertCircle } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import ToggleSwitch from './ToggleSwitch';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage, Language } from '../i18n';
 import { TextEncoding, SpecialCharConfig, FrameSegmentationConfig, FrameSegmentationMode, FrameDelimiter, TimezoneOption } from '../types';
 import { TIMEZONE_OPTIONS, loadTimezone, saveTimezone, getSystemTimezoneAsUtcOffset, getSystemTimezoneName, getSystemTimezoneOffset, parseUtcOffset } from '../utils/timezone';
+
+// shadcn components
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
   enabled: true,
@@ -54,10 +66,11 @@ function formatBytes(bytes: number): string {
 }
 
 interface SettingsModalProps {
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => {
   const { themeMode, setThemeMode, colors } = useTheme();
   const { language, setLanguage, t } = useLanguage();
   const [timezone, setTimezoneState] = useState<TimezoneOption>(loadTimezone);
@@ -185,7 +198,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
     // Sync timezone offset to backend for recording timestamps
     const offsetMinutes = tz === 'System'
-      ? Math.round(getSystemTimezoneOffset() * 60)  // Convert hours to minutes
+      ? Math.round(getSystemTimezoneOffset() * 60)
       : Math.round(parseUtcOffset(tz) * 60);
     try {
       await invoke('set_timezone_offset', { offsetMinutes });
@@ -225,7 +238,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         handleFrameSegmentationChange({ delimiter: { Custom: bytes } });
         setCustomDelimiterError('');
       } else {
-        // Set a default custom delimiter if none is valid
         setCustomDelimiterHex('0A');
         handleFrameSegmentationChange({ delimiter: { Custom: [0x0A] } });
         setCustomDelimiterError('');
@@ -256,23 +268,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const handleBrowsePath = async () => {
     try {
       setIsBrowsing(true);
-      console.log('Opening file dialog...');
       const selected = await open({
         directory: true,
         multiple: false,
         title: 'Select Log Save Location',
       });
-      console.log('Dialog result:', selected);
 
       if (selected && typeof selected === 'string') {
-        console.log('Selected path:', selected);
         handleLogPathChange(selected);
-      } else {
-        console.log('No path selected or dialog cancelled');
       }
     } catch (error) {
       console.error('Error selecting folder:', error);
-      alert(`Error selecting folder: ${error}`);
     } finally {
       setIsBrowsing(false);
     }
@@ -296,7 +302,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         }
       } else {
         setUpdateState('idle');
-        // Show "up to date" message briefly
         setUpdateError(t('settings.upToDate'));
         setTimeout(() => setUpdateError(null), 3000);
       }
@@ -321,7 +326,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setDownloadProgress(0);
     setUpdateError(null);
 
-    // Listen for download progress events
     const unlisten = await listen<DownloadProgress>('update-download-progress', (event) => {
       setDownloadProgress(event.payload.percentage);
     });
@@ -362,647 +366,455 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setUpdateError(null);
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
   return (
-    <div
-      onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center transition-opacity duration-200"
-    >
-      {/* Modal Window */}
-      <div
-        className="w-[500px] max-h-[80vh] rounded-xl shadow-macos-window flex flex-col overflow-hidden transform transition-all duration-200"
-        style={{
-          backgroundColor: colors.bgSidebar,
-          borderColor: colors.border,
-          borderWidth: '1px',
-          borderStyle: 'solid'
-        }}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0" style={{ backgroundColor: colors.bgSidebar }}>
+        <DialogHeader className="px-4 py-3 border-b" style={{ backgroundColor: colors.bgHeader, borderColor: colors.borderDark }}>
+          <DialogTitle className="text-sm font-semibold" style={{ color: colors.textPrimary }}>
+            {t('settings.title')}
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* Modal Header */}
-        <div
-          className="h-10 flex items-center justify-between px-4 select-none"
-          style={{
-            backgroundColor: colors.bgHeader,
-            borderBottom: `1px solid ${colors.borderDark}`
-          }}
-        >
-          <span className="font-semibold text-sm" style={{ color: colors.textPrimary }}>{t('settings.title')}</span>
-          <button
-            onClick={onClose}
-            className="transition-colors focus:outline-none"
-            style={{ color: colors.textSecondary }}
-            onMouseEnter={(e) => e.currentTarget.style.color = colors.textPrimary}
-            onMouseLeave={(e) => e.currentTarget.style.color = colors.textSecondary}
-            title={t('settings.close')}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Modal Content */}
-        <div className="p-5 space-y-6 overflow-y-auto">
-
+        <div className="p-5 space-y-6 overflow-y-auto flex-1">
           {/* Appearance Section */}
           <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
               {t('settings.appearance')}
-            </h3>
-            <div
-              className="rounded-lg p-1 flex"
-              style={{ backgroundColor: colors.bgMain, border: `1px solid ${colors.borderLight}` }}
-            >
-              <button
-                onClick={() => setThemeMode('light')}
-                className="flex-1 py-1.5 text-xs font-medium rounded-[5px] transition-all flex items-center justify-center space-x-1"
-                style={{
-                  backgroundColor: themeMode === 'light' ? colors.accent : 'transparent',
-                  color: themeMode === 'light' ? '#ffffff' : colors.textSecondary,
-                  boxShadow: themeMode === 'light' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
-                }}
-              >
-                <Sun size={12} />
-                <span>{t('settings.light')}</span>
-              </button>
-              <button
-                onClick={() => setThemeMode('dark')}
-                className="flex-1 py-1.5 text-xs font-medium rounded-[5px] transition-all flex items-center justify-center space-x-1"
-                style={{
-                  backgroundColor: themeMode === 'dark' ? colors.accent : 'transparent',
-                  color: themeMode === 'dark' ? '#ffffff' : colors.textSecondary,
-                  boxShadow: themeMode === 'dark' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
-                }}
-              >
-                <Moon size={12} />
-                <span>{t('settings.dark')}</span>
-              </button>
-            </div>
+            </Label>
+            <Card className="p-1" style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
+              <div className="flex">
+                <Button
+                  variant={themeMode === 'light' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="flex-1 gap-1"
+                  onClick={() => setThemeMode('light')}
+                >
+                  <Sun size={12} />
+                  <span>{t('settings.light')}</span>
+                </Button>
+                <Button
+                  variant={themeMode === 'dark' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="flex-1 gap-1"
+                  onClick={() => setThemeMode('dark')}
+                >
+                  <Moon size={12} />
+                  <span>{t('settings.dark')}</span>
+                </Button>
+              </div>
+            </Card>
           </div>
 
           {/* Regional Section */}
           <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
               {t('settings.regional')}
-            </h3>
-            <div
-              className="rounded-lg overflow-hidden"
-              style={{ backgroundColor: colors.bgMain, border: `1px solid ${colors.borderLight}` }}
-            >
-              {/* Language Item */}
-              <div
-                className="p-3 flex items-center justify-between"
-                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
-              >
-                <div className="flex flex-col">
-                  <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.language')}</span>
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.languageDesc')}</span>
+            </Label>
+            <Card style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
+              <CardContent className="p-0">
+                {/* Language Item */}
+                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.language')}</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.languageDesc')}</span>
+                  </div>
+                  <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en">English</SelectItem>
+                      <SelectItem value="zh-CN">中文 (Chinese)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value as Language)}
-                  className="w-32 px-2 py-1 text-xs rounded focus:outline-none focus:ring-1"
-                  style={{
-                    backgroundColor: colors.bgSurface,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary
-                  }}
-                >
-                  <option value="en">English</option>
-                  <option value="zh-CN">中文 (Chinese)</option>
-                </select>
-              </div>
 
-              {/* Timezone Item */}
-              <div className="p-3 flex items-center justify-between">
-                <div className="flex flex-col">
-                  <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.timezone')}</span>
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>
-                    {t('settings.timezoneDesc')}
-                    {timezone === 'System' && (
-                      <span style={{ color: colors.textTertiary, marginLeft: '4px' }}>
-                        ({getSystemTimezoneName()}, {getSystemTimezoneAsUtcOffset()})
-                      </span>
-                    )}
-                  </span>
+                {/* Timezone Item */}
+                <div className="p-3 flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.timezone')}</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.timezoneDesc')}
+                      {timezone === 'System' && (
+                        <span className="ml-1">({getSystemTimezoneName()}, {getSystemTimezoneAsUtcOffset()})</span>
+                      )}
+                    </span>
+                  </div>
+                  <Select value={timezone} onValueChange={(v) => handleTimezoneChange(v as TimezoneOption)}>
+                    <SelectTrigger className="w-40 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEZONE_OPTIONS.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {language === 'zh-CN' ? tz.labelZh : tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <select
-                  value={timezone}
-                  onChange={(e) => handleTimezoneChange(e.target.value as TimezoneOption)}
-                  className="w-40 px-2 py-1 text-xs rounded focus:outline-none focus:ring-1"
-                  style={{
-                    backgroundColor: colors.bgSurface,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary
-                  }}
-                >
-                  {TIMEZONE_OPTIONS.map((tz) => (
-                    <option key={tz.value} value={tz.value}>
-                      {language === 'zh-CN' ? tz.labelZh : tz.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* General Section */}
           <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
               {t('settings.general')}
-            </h3>
-            <div
-              className="rounded-lg overflow-hidden"
-              style={{ backgroundColor: colors.bgMain, border: `1px solid ${colors.borderLight}` }}
-            >
-              {/* Log Path Item */}
-              <div
-                className="p-3 flex items-center justify-between"
-                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
-              >
-                <div className="flex flex-col">
-                  <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.defaultLogPath')}</span>
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.defaultLogPathDesc')}</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div
-                    className="rounded px-2 py-1 text-xs max-w-[120px] truncate cursor-default"
-                    style={{
-                      backgroundColor: colors.bgSurface,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.textSecondary
-                    }}
-                    title={logPath}
-                  >
-                    {logPath}
-                  </div>
-                  <button
-                    onClick={handleBrowsePath}
-                    className="p-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ color: colors.textSecondary }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = colors.bgHover;
-                      e.currentTarget.style.color = colors.textPrimary;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = colors.textSecondary;
-                    }}
-                    title={t('settings.browseFolderTitle')}
-                    disabled={isBrowsing}
-                  >
-                    <Folder size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Max Log Lines Item */}
-              <div
-                className="p-3 flex items-center justify-between"
-                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
-              >
-                <div className="flex flex-col">
-                  <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.maxLogLines')}</span>
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.maxLogLinesDesc')}</span>
-                </div>
-                <input
-                  type="number"
-                  min="1000"
-                  max="100000"
-                  step="1000"
-                  value={maxLogLines}
-                  onChange={(e) => handleMaxLogLinesChange(parseInt(e.target.value, 10) || 1000)}
-                  className="w-24 px-2 py-1 text-xs rounded text-right focus:outline-none focus:ring-1"
-                  style={{
-                    backgroundColor: colors.bgSurface,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary
-                  }}
-                />
-              </div>
-
-              {/* Text Encoding Item */}
-              <div
-                className="p-3 flex items-center justify-between"
-                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
-              >
-                <div className="flex flex-col">
-                  <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.textEncoding')}</span>
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.textEncodingDesc')}</span>
-                </div>
-                <select
-                  value={textEncoding}
-                  onChange={(e) => handleTextEncodingChange(e.target.value as TextEncoding)}
-                  className="w-24 px-2 py-1 text-xs rounded focus:outline-none focus:ring-1"
-                  style={{
-                    backgroundColor: colors.bgSurface,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary
-                  }}
-                >
-                  <option value="utf-8">UTF-8</option>
-                  <option value="gbk">GBK</option>
-                </select>
-              </div>
-
-              {/* Special Character Conversion Item */}
-              <div
-                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
-              >
-                <div className="p-3 flex items-center justify-between">
+            </Label>
+            <Card style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
+              <CardContent className="p-0">
+                {/* Log Path Item */}
+                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
                   <div className="flex flex-col">
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.convertSpecialChars')}</span>
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.convertSpecialCharsDesc')}</span>
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.defaultLogPath')}</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.defaultLogPathDesc')}</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <ToggleSwitch
-                      checked={specialCharConfig.enabled}
-                      onChange={(enabled) => handleSpecialCharConfigChange({ enabled })}
-                      title={t('settings.convertSpecialChars')}
-                    />
-                    {specialCharConfig.enabled && (
-                      <button
-                        onClick={() => setSpecialCharExpanded(!specialCharExpanded)}
-                        className="p-1 rounded transition-colors"
-                        style={{ color: colors.textSecondary }}
-                        title={specialCharExpanded ? t('settings.collapseOptions') : t('settings.expandOptions')}
-                      >
-                        {specialCharExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
+                  <div className="flex items-center gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="rounded px-2 py-1 text-xs max-w-[120px] truncate border cursor-default" style={{ backgroundColor: colors.bgSurface, borderColor: colors.border, color: colors.textSecondary }}>
+                            {logPath}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{logPath}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={handleBrowsePath}
+                            disabled={isBrowsing}
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-md border transition-colors hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
+                            style={{ borderColor: colors.border, backgroundColor: colors.bgInput }}
+                          >
+                            <Folder size={16} style={{ color: colors.textSecondary }} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{t('settings.browseFolderTitle')}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+
+                {/* Max Log Lines Item */}
+                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.maxLogLines')}</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.maxLogLinesDesc')}</span>
+                  </div>
+                  <Input
+                    type="number"
+                    min="1000"
+                    max="100000"
+                    step="1000"
+                    value={maxLogLines}
+                    onChange={(e) => handleMaxLogLinesChange(parseInt(e.target.value, 10) || 1000)}
+                    className="w-24 h-8 text-xs text-right"
+                  />
+                </div>
+
+                {/* Text Encoding Item */}
+                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.textEncoding')}</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.textEncodingDesc')}</span>
+                  </div>
+                  <Select value={textEncoding} onValueChange={(v) => handleTextEncodingChange(v as TextEncoding)}>
+                    <SelectTrigger className="w-24 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="utf-8">UTF-8</SelectItem>
+                      <SelectItem value="gbk">GBK</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Special Character Conversion Item */}
+                <div className="border-b" style={{ borderColor: colors.borderLight }}>
+                  <div className="p-3 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.convertSpecialChars')}</span>
+                      <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.convertSpecialCharsDesc')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={specialCharConfig.enabled}
+                        onCheckedChange={(enabled) => handleSpecialCharConfigChange({ enabled })}
+                      />
+                      {specialCharConfig.enabled && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSpecialCharExpanded(!specialCharExpanded)}>
+                          {specialCharExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sub-options for special character conversion */}
+                  {specialCharConfig.enabled && specialCharExpanded && (
+                    <div className="px-3 pt-2 pb-3 grid grid-cols-2 gap-2" style={{ backgroundColor: colors.bgSurface }}>
+                      {[
+                        { key: 'convertLF', label: '\\n → ␊', descKey: 'settings.lineFeed' },
+                        { key: 'convertCR', label: '\\r → ␍', descKey: 'settings.carriageReturn' },
+                        { key: 'convertTab', label: '\\t → ␉', descKey: 'settings.tab' },
+                        { key: 'convertNull', label: '\\0 → ␀', descKey: 'settings.null' },
+                        { key: 'convertEsc', label: 'ESC → ␛', descKey: 'settings.escape' },
+                        { key: 'convertSpaces', label: 'Spaces → ␣', descKey: 'settings.trailingMultiple' },
+                      ].map(({ key, label, descKey }) => (
+                        <label
+                          key={key}
+                          className="flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors hover:bg-accent"
+                        >
+                          <Checkbox
+                            checked={specialCharConfig[key as keyof SpecialCharConfig] as boolean}
+                            onCheckedChange={(checked) => handleSpecialCharConfigChange({ [key]: checked })}
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-xs font-mono" style={{ color: colors.textPrimary }}>{label}</span>
+                            <span className="text-[10px]" style={{ color: colors.textTertiary }}>{t(descKey)}</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Frame Segmentation Item */}
+                <div className="border-b" style={{ borderColor: colors.borderLight }}>
+                  <div className="p-3 flex flex-col gap-3">
+                    <div className="flex flex-col">
+                      <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.frameSegmentation')}</span>
+                      <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.frameSegmentationDesc')}</span>
+                    </div>
+
+                    {/* Mode selector */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.mode')}:</span>
+                      <div className="flex rounded-md overflow-hidden flex-1 border" style={{ borderColor: colors.borderLight }}>
+                        {(['Timeout', 'Delimiter', 'Combined'] as FrameSegmentationMode[]).map((mode) => (
+                          <Button
+                            key={mode}
+                            variant={frameSegmentationConfig.mode === mode ? 'default' : 'ghost'}
+                            size="sm"
+                            className="flex-1 rounded-none text-xs h-7"
+                            onClick={() => handleModeChange(mode)}
+                          >
+                            {mode}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Timeout setting */}
+                    {(frameSegmentationConfig.mode === 'Timeout' || frameSegmentationConfig.mode === 'Combined') && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Timeout:</span>
+                        <Input
+                          type="number"
+                          min="10"
+                          max="1000"
+                          step="10"
+                          value={frameSegmentationConfig.timeout_ms}
+                          onChange={(e) => handleTimeoutChange(parseInt(e.target.value, 10) || 10)}
+                          className="w-20 h-7 text-xs text-right"
+                        />
+                        <span className="text-xs" style={{ color: colors.textTertiary }}>ms (10-1000)</span>
+                      </div>
+                    )}
+
+                    {/* Delimiter setting */}
+                    {(frameSegmentationConfig.mode === 'Delimiter' || frameSegmentationConfig.mode === 'Combined') && (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.delimiterLabel')}:</span>
+                          <Select
+                            value={getDelimiterType(frameSegmentationConfig.delimiter)}
+                            onValueChange={(v) => handleDelimiterTypeChange(v as 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom')}
+                          >
+                            <SelectTrigger className="flex-1 h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="AnyNewline">{t('settings.anyNewline')} (\r, \n, \r\n)</SelectItem>
+                              <SelectItem value="CR">CR (\r, 0x0D)</SelectItem>
+                              <SelectItem value="LF">LF (\n, 0x0A)</SelectItem>
+                              <SelectItem value="CRLF">CRLF (\r\n, 0x0D 0x0A)</SelectItem>
+                              <SelectItem value="Custom">{t('settings.custom')}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Custom delimiter input */}
+                        {getDelimiterType(frameSegmentationConfig.delimiter) === 'Custom' && (
+                          <div className="flex items-center gap-2 ml-16">
+                            <Input
+                              type="text"
+                              value={customDelimiterHex}
+                              onChange={(e) => handleCustomDelimiterChange(e.target.value)}
+                              placeholder="e.g., 0D 0A or 1B5D"
+                              className={`flex-1 h-7 text-xs font-mono ${customDelimiterError ? 'border-destructive' : ''}`}
+                            />
+                            {customDelimiterError && (
+                              <span className="text-xs text-destructive">
+                                {customDelimiterError === 'Invalid hex format' ? t('settings.invalidHex') : t('settings.delimiterEmpty')}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
-
-                {/* Sub-options for special character conversion */}
-                {specialCharConfig.enabled && specialCharExpanded && (
-                  <div
-
-                    className="px-3 pt-2 pb-3 grid grid-cols-2 gap-2"
-                    style={{ backgroundColor: colors.bgSurface }}
-                  >
-                    {[
-                      { key: 'convertLF', label: '\\n → ␊', descKey: 'settings.lineFeed' },
-                      { key: 'convertCR', label: '\\r → ␍', descKey: 'settings.carriageReturn' },
-                      { key: 'convertTab', label: '\\t → ␉', descKey: 'settings.tab' },
-                      { key: 'convertNull', label: '\\0 → ␀', descKey: 'settings.null' },
-                      { key: 'convertEsc', label: 'ESC → ␛', descKey: 'settings.escape' },
-                      { key: 'convertSpaces', label: 'Spaces → ␣', descKey: 'settings.trailingMultiple' },
-                    ].map(({ key, label, descKey }) => (
-                      <label
-                        key={key}
-                        className="flex items-center space-x-2 p-1.5 rounded cursor-pointer transition-colors"
-                        style={{ backgroundColor: 'transparent' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.bgHover}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={specialCharConfig[key as keyof SpecialCharConfig] as boolean}
-                          onChange={(e) => handleSpecialCharConfigChange({ [key]: e.target.checked })}
-                          className="w-3.5 h-3.5 rounded"
-                          style={{ accentColor: colors.accent }}
-                        />
-                        <div className="flex flex-col">
-                          <span className="text-xs font-mono" style={{ color: colors.textPrimary }}>{label}</span>
-                          <span className="text-[10px]" style={{ color: colors.textTertiary }}>{t(descKey)}</span>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Frame Segmentation Item */}
-              <div
-                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
-              >
-                <div className="p-3 flex flex-col space-y-3">
-                  <div className="flex flex-col">
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.frameSegmentation')}</span>
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.frameSegmentationDesc')}</span>
-                  </div>
-
-                  {/* Mode selector */}
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.mode')}:</span>
-                    <div
-                      className="flex rounded-md overflow-hidden flex-1"
-                      style={{ border: `1px solid ${colors.borderLight}` }}
-                    >
-                      {(['Timeout', 'Delimiter', 'Combined'] as FrameSegmentationMode[]).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => handleModeChange(mode)}
-                          className="flex-1 py-1 text-xs font-medium transition-colors"
-                          style={{
-                            backgroundColor: frameSegmentationConfig.mode === mode ? colors.accent : colors.bgSurface,
-                            color: frameSegmentationConfig.mode === mode ? '#ffffff' : colors.textSecondary,
-                          }}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Timeout setting - show for Timeout and Combined modes */}
-                  {(frameSegmentationConfig.mode === 'Timeout' || frameSegmentationConfig.mode === 'Combined') && (
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Timeout:</span>
-                      <input
-                        type="number"
-                        min="10"
-                        max="1000"
-                        step="10"
-                        value={frameSegmentationConfig.timeout_ms}
-                        onChange={(e) => handleTimeoutChange(parseInt(e.target.value, 10) || 10)}
-                        className="w-20 px-2 py-1 text-xs rounded text-right focus:outline-none focus:ring-1"
-                        style={{
-                          backgroundColor: colors.bgSurface,
-                          border: `1px solid ${colors.border}`,
-                          color: colors.textPrimary
-                        }}
-                      />
-                      <span className="text-xs" style={{ color: colors.textTertiary }}>ms (10-1000)</span>
-                    </div>
-                  )}
-
-                  {/* Delimiter setting - show for Delimiter and Combined modes */}
-                  {(frameSegmentationConfig.mode === 'Delimiter' || frameSegmentationConfig.mode === 'Combined') && (
-                    <div className="flex flex-col space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.delimiterLabel')}:</span>
-                        <select
-                          value={getDelimiterType(frameSegmentationConfig.delimiter)}
-                          onChange={(e) => handleDelimiterTypeChange(e.target.value as 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom')}
-                          className="flex-1 px-2 py-1 text-xs rounded focus:outline-none focus:ring-1"
-                          style={{
-                            backgroundColor: colors.bgSurface,
-                            border: `1px solid ${colors.border}`,
-                            color: colors.textPrimary
-                          }}
-                        >
-                          <option value="AnyNewline">{t('settings.anyNewline')} (\r, \n, \r\n)</option>
-                          <option value="CR">CR (\r, 0x0D)</option>
-                          <option value="LF">LF (\n, 0x0A)</option>
-                          <option value="CRLF">CRLF (\r\n, 0x0D 0x0A)</option>
-                          <option value="Custom">{t('settings.custom')}</option>
-                        </select>
-                      </div>
-
-                      {/* Custom delimiter input */}
-                      {getDelimiterType(frameSegmentationConfig.delimiter) === 'Custom' && (
-                        <div className="flex items-center space-x-2 ml-16">
-                          <input
-                            type="text"
-                            value={customDelimiterHex}
-                            onChange={(e) => handleCustomDelimiterChange(e.target.value)}
-                            placeholder="e.g., 0D 0A or 1B5D"
-                            className="flex-1 px-2 py-1 text-xs font-mono rounded focus:outline-none focus:ring-1"
-                            style={{
-                              backgroundColor: colors.bgSurface,
-                              border: `1px solid ${customDelimiterError ? '#ef4444' : colors.border}`,
-                              color: colors.textPrimary
-                            }}
-                          />
-                          {customDelimiterError && (
-                            <span className="text-xs text-red-500">{customDelimiterError === 'Invalid hex format' ? t('settings.invalidHex') : t('settings.delimiterEmpty')}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* About Section */}
           <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
               {t('settings.about')}
-            </h3>
-            <div
-              className="rounded-lg overflow-hidden"
-              style={{ backgroundColor: colors.bgMain, border: `1px solid ${colors.borderLight}` }}
-            >
-              {/* App Info Row */}
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
-                  <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} 1.2.1 (Build 20251213)</div>
+            </Label>
+            <Card style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
+              <CardContent className="p-0">
+                {/* App Info Row */}
+                <div className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
+                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} 1.2.1 (Build 20251213)</div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleCheckUpdates}
+                    disabled={updateState === 'checking' || updateState === 'downloading'}
+                  >
+                    {updateState === 'checking' ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin mr-1.5" />
+                        <span>{t('settings.checking')}</span>
+                      </>
+                    ) : (
+                      <span>{t('settings.checkForUpdates')}</span>
+                    )}
+                  </Button>
                 </div>
-                <button
-                  onClick={handleCheckUpdates}
-                  disabled={updateState === 'checking' || updateState === 'downloading'}
-                  className="px-3 py-1 rounded-md text-xs transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: colors.buttonSecondaryBg,
-                    border: `1px solid ${colors.borderLight}`,
-                    color: colors.textPrimary
-                  }}
-                  onMouseEnter={(e) => {
-                    if (updateState !== 'checking' && updateState !== 'downloading') {
-                      e.currentTarget.style.backgroundColor = colors.buttonSecondaryHover;
-                    }
-                  }}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonSecondaryBg}
-                >
-                  {updateState === 'checking' ? (
-                    <>
-                      <Loader2 size={12} className="animate-spin" />
-                      <span>{t('settings.checking')}</span>
-                    </>
-                  ) : (
-                    <span>{t('settings.checkForUpdates')}</span>
-                  )}
-                </button>
-              </div>
 
-              {/* Update Available State */}
-              {updateState === 'available' && updateInfo && (
-                <div
-                  className="p-4 border-t space-y-3"
-                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
-                >
-                  <div className="flex items-start space-x-2">
-                    <Download size={16} className="mt-0.5 flex-shrink-0" style={{ color: colors.accent }} />
-                    <div className="flex-1">
-                      <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
-                        {t('settings.updateAvailable')}
-                      </div>
-                      <div className="text-xs mt-1 space-y-0.5" style={{ color: colors.textSecondary }}>
-                        <div>{t('settings.currentVersion')}: {updateInfo.current_version}</div>
-                        <div>{t('settings.latestVersion')}: {updateInfo.latest_version}</div>
-                        {updateInfo.download_size && (
-                          <div>{t('settings.downloadSize')}: {formatBytes(updateInfo.download_size)}</div>
-                        )}
+                {/* Update Available State */}
+                {updateState === 'available' && updateInfo && (
+                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                    <div className="flex items-start gap-2">
+                      <Download size={16} className="mt-0.5 flex-shrink-0 text-primary" />
+                      <div className="flex-1">
+                        <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
+                          {t('settings.updateAvailable')}
+                        </div>
+                        <div className="text-xs mt-1 space-y-0.5" style={{ color: colors.textSecondary }}>
+                          <div>{t('settings.currentVersion')}: {updateInfo.current_version}</div>
+                          <div>{t('settings.latestVersion')}: {updateInfo.latest_version}</div>
+                          {updateInfo.download_size && (
+                            <div>{t('settings.downloadSize')}: {formatBytes(updateInfo.download_size)}</div>
+                          )}
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Button className="flex-1" size="sm" onClick={handleDownloadUpdate}>
+                        {t('settings.downloadAndInstall')}
+                      </Button>
+                      <Button variant="secondary" size="sm" asChild>
+                        <a href={updateInfo.release_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1">
+                          <ExternalLink size={12} />
+                          <span>{t('settings.viewReleaseNotes')}</span>
+                        </a>
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={handleCancelUpdate}>
+                        {t('settings.cancel')}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={handleDownloadUpdate}
-                      className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                      style={{
-                        backgroundColor: colors.accent,
-                        color: '#ffffff'
-                      }}
-                    >
-                      {t('settings.downloadAndInstall')}
-                    </button>
-                    <a
-                      href={updateInfo.release_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-md text-xs transition-colors flex items-center space-x-1"
-                      style={{
-                        backgroundColor: colors.buttonSecondaryBg,
-                        border: `1px solid ${colors.borderLight}`,
-                        color: colors.textPrimary
-                      }}
-                    >
-                      <ExternalLink size={12} />
-                      <span>{t('settings.viewReleaseNotes')}</span>
-                    </a>
-                    <button
-                      onClick={handleCancelUpdate}
-                      className="px-3 py-1.5 rounded-md text-xs transition-colors"
-                      style={{
-                        backgroundColor: colors.buttonSecondaryBg,
-                        border: `1px solid ${colors.borderLight}`,
-                        color: colors.textSecondary
-                      }}
-                    >
-                      {t('settings.cancel')}
-                    </button>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {/* Downloading State */}
-              {updateState === 'downloading' && (
-                <div
-                  className="p-4 border-t space-y-3"
-                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
-                >
-                  <div className="flex items-center space-x-2">
-                    <Loader2 size={16} className="animate-spin" style={{ color: colors.accent }} />
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>
-                      {t('settings.downloading')} {downloadProgress}%
+                {/* Downloading State */}
+                {updateState === 'downloading' && (
+                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                    <div className="flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin text-primary" />
+                      <span className="text-sm" style={{ color: colors.textPrimary }}>
+                        {t('settings.downloading')} {downloadProgress}%
+                      </span>
+                    </div>
+                    <Progress value={downloadProgress} className="h-2" />
+                  </div>
+                )}
+
+                {/* Ready to Install State */}
+                {updateState === 'ready' && (
+                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                    <div className="flex items-start gap-2">
+                      <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-500" />
+                      <div className="flex-1">
+                        <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
+                          {t('settings.readyToInstall')}
+                        </div>
+                        <div className="text-xs mt-1" style={{ color: colors.textSecondary }}>
+                          {t('settings.readyToInstallDesc')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button className="flex-1 bg-green-500 hover:bg-green-600" size="sm" onClick={handleInstall}>
+                        {t('settings.closeAndInstall')}
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={handleCancelUpdate}>
+                        {t('settings.cancel')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error State */}
+                {updateState === 'error' && updateError && (
+                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-destructive" />
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-destructive">
+                          {t('settings.updateError')}
+                        </div>
+                        <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: colors.textSecondary }}>
+                          {updateError}
+                        </div>
+                      </div>
+                    </div>
+                    <Button variant="secondary" size="sm" onClick={handleCancelUpdate}>
+                      {t('settings.cancel')}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Up to date message (shown briefly) */}
+                {updateState === 'idle' && updateError === t('settings.upToDate') && (
+                  <div className="p-3 border-t flex items-center gap-2" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                    <CheckCircle size={14} className="text-green-500" />
+                    <span className="text-xs" style={{ color: colors.textSecondary }}>
+                      {t('settings.upToDate')}
                     </span>
                   </div>
-                  <div
-                    className="h-2 rounded-full overflow-hidden"
-                    style={{ backgroundColor: colors.bgMain }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all duration-200"
-                      style={{
-                        width: `${downloadProgress}%`,
-                        backgroundColor: colors.accent
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Ready to Install State */}
-              {updateState === 'ready' && (
-                <div
-                  className="p-4 border-t space-y-3"
-                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
-                >
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle size={16} className="mt-0.5 flex-shrink-0" style={{ color: '#22c55e' }} />
-                    <div className="flex-1">
-                      <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
-                        {t('settings.readyToInstall')}
-                      </div>
-                      <div className="text-xs mt-1" style={{ color: colors.textSecondary }}>
-                        {t('settings.readyToInstallDesc')}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={handleInstall}
-                      className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                      style={{
-                        backgroundColor: '#22c55e',
-                        color: '#ffffff'
-                      }}
-                    >
-                      {t('settings.closeAndInstall')}
-                    </button>
-                    <button
-                      onClick={handleCancelUpdate}
-                      className="px-3 py-1.5 rounded-md text-xs transition-colors"
-                      style={{
-                        backgroundColor: colors.buttonSecondaryBg,
-                        border: `1px solid ${colors.borderLight}`,
-                        color: colors.textSecondary
-                      }}
-                    >
-                      {t('settings.cancel')}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Error State */}
-              {updateState === 'error' && updateError && (
-                <div
-                  className="p-4 border-t space-y-3"
-                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
-                >
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" style={{ color: '#ef4444' }} />
-                    <div className="flex-1">
-                      <div className="font-medium text-sm" style={{ color: '#ef4444' }}>
-                        {t('settings.updateError')}
-                      </div>
-                      <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: colors.textSecondary }}>
-                        {updateError}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleCancelUpdate}
-                    className="px-3 py-1.5 rounded-md text-xs transition-colors"
-                    style={{
-                      backgroundColor: colors.buttonSecondaryBg,
-                      border: `1px solid ${colors.borderLight}`,
-                      color: colors.textSecondary
-                    }}
-                  >
-                    {t('settings.cancel')}
-                  </button>
-                </div>
-              )}
-
-              {/* Up to date message (shown briefly) */}
-              {updateState === 'idle' && updateError === t('settings.upToDate') && (
-                <div
-                  className="p-3 border-t flex items-center space-x-2"
-                  style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
-                >
-                  <CheckCircle size={14} style={{ color: '#22c55e' }} />
-                  <span className="text-xs" style={{ color: colors.textSecondary }}>
-                    {t('settings.upToDate')}
-                  </span>
-                </div>
-              )}
-            </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
-
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
