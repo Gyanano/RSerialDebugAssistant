@@ -1,10 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import fs from "fs";
+
+// Read version from version.json
+const versionConfig = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "../version.json"), "utf8")
+);
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+
+  // Inject version info as global constants
+  define: {
+    __APP_VERSION__: JSON.stringify(versionConfig.version),
+    __APP_BUILD__: JSON.stringify(versionConfig.build),
+  },
 
   // Path alias for shadcn/ui
   resolve: {

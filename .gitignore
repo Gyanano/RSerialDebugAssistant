@@ -40,6 +40,7 @@ Thumbs.db
 *.deb
 *.rpm
 *.msi
+.build_scripts/
 
 # Temporary files
 .tmp/

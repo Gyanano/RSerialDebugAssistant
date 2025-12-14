@@ -12,7 +12,7 @@
 [![React](https://img.shields.io/badge/react-18.2-61dafb.svg)](https://reactjs.org/)
 [![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)](https://nodejs.org/)
 
-[✨ Features](#-features) | [📦 Installation](#-installation) | [🚀 Quick Start](#-quick-start) | [📋 Usage Guide](#-usage-guide) | [🔧 Development](#-development) | [❤️ Contributing](#-contributing)
+[✨ Features](#-features) | [📦 Installation](#-installation) | [🚀 Quick Start](#-quick-start) | [📋 Usage Guide](#-usage-guide) | [🔧 Development](#-development) | [❤️ Contributing](#%EF%B8%8F-contributing)
 
 **[English](./README.md) | [简体中文](./README.zh-CN.md)**
 
@@ -30,8 +30,13 @@ Whether you're debugging Arduino projects, communicating with industrial sensors
 
 ### 🎨 User Interface
 - **Light/Dark Theme** - Automatic and manual theme switching with modern-style design
+- **Modern UI Components** - Built with shadcn UI for consistent, elegant styling
 - **Responsive Layout** - Resizable panels with persistent layout preferences
 - **Real-time Logging** - Live communication display with precise timestamps and direction indicators
+- **Log Search & Navigation** - Search through logs with keyboard shortcuts (Ctrl+F), match highlighting, and navigation
+- **Line Numbers** - Optional line number display for easier log reference
+- **Smart Auto-scroll** - Intelligent scroll control that pauses on user interaction and resumes at bottom
+- **Toast Notifications** - Non-intrusive toast messages for status updates and errors
 - **Multi-language Support** - English and Chinese (Simplified) interface
 - **Special Character Visualization** - Visual representation of control characters (CR, LF, ESC, etc.)
 - **Intuitive Controls** - Professional UI inspired by modern development tools
@@ -44,9 +49,14 @@ Whether you're debugging Arduino projects, communicating with industrial sensors
 - **Multiple Text Encodings** - Support for UTF-8 and GBK character encoding
 
 ### 🚀 Advanced Features
+- **Auto-Update** - In-app update checker with GitHub Release integration
+  - Check for new versions with download progress display
+  - One-click install for seamless upgrades
 - **Quick Commands** - Create command lists with batch execution capability
+  - Custom command names for easy identification
   - Support for custom line endings (None, \r, \n, \r\n)
   - Hex format support for binary commands
+  - Hex/Text format conversion toggle
 - **Automatic Checksum** - Built-in support for multiple checksum algorithms:
   - XOR, ADD8, CRC8, CRC16, CCITT-CRC16
   - Configurable start/end positions for checksum calculation
@@ -284,6 +294,28 @@ npm run build                       # Vite production build
 
 ```
 
+## 🗺️ Roadmap
+
+We are actively working on new features to make RSerial Debug Assistant even more powerful:
+
+### 📦 Data Parsing & Packaging (Planned)
+- **Protocol Parser** - Define custom data frame structures with header, payload, and checksum
+- **Protocol Templates** - Built-in support for common protocols (Modbus RTU/ASCII, custom frames)
+- **Data Field Extraction** - Parse received data into named fields for analysis
+- **Auto-Response** - Configure automatic replies based on received data patterns
+
+### 📊 Real-time Data Visualization (Planned)
+- **Waveform Plotter** - Real-time plotting of parsed numeric values
+- **Multi-channel Display** - Monitor multiple data fields simultaneously
+- **Data Recording & Playback** - Record sessions and replay for analysis
+- **Export Charts** - Save plots as images or CSV data
+
+### 🔧 Advanced Tools (Planned)
+- **Data Triggers & Alerts** - Set up notifications based on data patterns or thresholds
+- **Virtual Serial Port** - Create virtual COM port pairs for testing
+
+> Have a feature request? [Open an issue](https://github.com/Gyanano/RSerialDebugAssistant/issues) to let us know!
+
 ## ❤️ Contributing
 
 Contributions are welcome! Help us improve the project:
@@ -391,9 +423,9 @@ This project stands on the shoulders of amazing open-source projects:
 <details>
 <summary><b>Version History</b></summary>
 
-- **v1.2.1** - Add check update feature, enhanced log viewer with search and line numbers, and improved display formatting.
-- **v1.2.0** - Add frame segmentation and advanced features, internationalization and timezone support.
-- **v1.1.0** - Add periodic sending function and quick command sending function. Implement the Light/Dark theme UI.
+- **v1.3.0** - Auto-update feature, enhanced log viewer with search/line numbers, quick command improvements, modern UI components (shadcn).
+- **v1.2.0** - Frame segmentation, internationalization, timezone support, and advanced configuration options.
+- **v1.1.0** - Periodic sending, quick command lists, light/dark theme UI.
 - **v1.0.0** - Initial release with core serial debugging functionality.
 
 </details>

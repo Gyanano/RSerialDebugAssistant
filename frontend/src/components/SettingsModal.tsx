@@ -688,7 +688,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 <div className="p-4 flex items-center justify-between">
                   <div>
                     <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
-                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} 1.2.1 (Build 20251213)</div>
+                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} {__APP_VERSION__} (Build {__APP_BUILD__})</div>
                   </div>
                   <Button
                     variant="secondary"
