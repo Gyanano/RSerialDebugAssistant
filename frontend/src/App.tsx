@@ -12,6 +12,8 @@ import { useTheme } from './contexts/ThemeContext';
 import { useTranslation } from './i18n';
 import { appendChecksum } from './utils/checksum';
 import { loadTimezone, formatDateForFilename, getSystemTimezoneOffset, parseUtcOffset } from './utils/timezone';
+import { Toaster } from './components/ui/sonner';
+import { toast } from 'sonner';
 
 const QUICK_COMMANDS_STORAGE_KEY = 'serial-debug-quick-commands';
 const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
@@ -458,7 +460,7 @@ function App() {
       await updateStatus();
     } catch (error) {
       console.error('Failed to connect:', error);
-      alert(`Failed to connect: ${error}`);
+      toast.error(`Failed to connect: ${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -495,14 +497,14 @@ function App() {
           // Parse hex string
           const cleanHex = sendText.replace(/\s/g, '');
           if (cleanHex.length % 2 !== 0) {
-            alert('Hex string must have even number of characters');
+            toast.warning('Hex string must have even number of characters');
             return;
           }
           const byteArray: number[] = [];
           for (let i = 0; i < cleanHex.length; i += 2) {
             const byte = parseInt(cleanHex.substr(i, 2), 16);
             if (isNaN(byte)) {
-              alert('Invalid hex characters');
+              toast.warning('Invalid hex characters');
               return;
             }
             byteArray.push(byte);
@@ -536,7 +538,7 @@ function App() {
       // Note: Logs are updated automatically via polling interval, no need to await here
     } catch (error) {
       console.error('Failed to send data:', error);
-      alert(`Failed to send data: ${error}`);
+      toast.error(`Failed to send data: ${error}`);
     }
   };
 
@@ -575,10 +577,10 @@ function App() {
         timezoneOffsetMinutes: timezone === 'System' ? -new Date().getTimezoneOffset() : getTimezoneOffsetMinutes(timezone),
       });
 
-      alert(`Logs exported to ${fullPath}`);
+      toast.success(`Logs exported to ${fullPath}`);
     } catch (error) {
       console.error('Failed to export logs:', error);
-      alert(`Failed to export logs: ${error}`);
+      toast.error(`Failed to export logs: ${error}`);
     }
   };
 
@@ -633,7 +635,7 @@ function App() {
       // Note: Logs are updated automatically via polling interval
     } catch (error) {
       console.error('Failed to send quick command:', error);
-      alert(`Failed to send: ${error}`);
+      toast.error(`Failed to send: ${error}`);
     }
   };
 
@@ -661,7 +663,7 @@ function App() {
       // Note: Logs are updated automatically via polling interval
     } catch (error) {
       console.error('Failed to send selected commands:', error);
-      alert(`Failed to send: ${error}`);
+      toast.error(`Failed to send: ${error}`);
     }
   };
 
@@ -877,6 +879,9 @@ function App() {
 
       {/* Settings Modal */}
       <SettingsModal open={showSettings} onOpenChange={setShowSettings} />
+
+      {/* Toast Notifications */}
+      <Toaster />
     </div>
   );
 }

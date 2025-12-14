@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { RefreshCw, Plug, PlugZap } from 'lucide-react';
 import { SerialPortInfo, ConnectionStatus } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
@@ -35,6 +35,82 @@ const PortSelector: React.FC<PortSelectorProps> = ({
   const { colors } = useTheme();
   const { t } = useTranslation();
 
+  // Animation state for refresh icon
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [rotation, setRotation] = useState(0);
+  const animationRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number>(0);
+  const refreshCompleteRef = useRef(false);
+  const completionTargetRef = useRef<number | null>(null);
+
+  const ROTATION_SPEED = 360; // degrees per second (1 full rotation per second)
+
+  // Handle manual refresh click
+  const handleRefreshClick = useCallback(() => {
+    if (isLoading) return;
+
+    setIsManualRefreshing(true);
+    refreshCompleteRef.current = false;
+    completionTargetRef.current = null;
+    startTimeRef.current = performance.now();
+    setRotation(0);
+    onRefresh();
+  }, [isLoading, onRefresh]);
+
+  // Animation loop
+  useEffect(() => {
+    if (!isManualRefreshing) return;
+
+    const animate = (currentTime: number) => {
+      const elapsed = (currentTime - startTimeRef.current) / 1000; // seconds
+      const currentRotation = elapsed * ROTATION_SPEED;
+
+      // If refresh is complete and we have a completion target
+      if (refreshCompleteRef.current && completionTargetRef.current !== null) {
+        if (currentRotation >= completionTargetRef.current) {
+          // Animation complete - snap to target and stop
+          setRotation(completionTargetRef.current);
+          setIsManualRefreshing(false);
+          animationRef.current = null;
+          return;
+        }
+      }
+
+      setRotation(currentRotation);
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [isManualRefreshing]);
+
+  // Detect when loading completes during manual refresh
+  useEffect(() => {
+    if (isManualRefreshing && !isLoading && !refreshCompleteRef.current) {
+      refreshCompleteRef.current = true;
+      // Calculate the target rotation: next complete full rotation
+      const elapsed = (performance.now() - startTimeRef.current) / 1000;
+      const currentRotation = elapsed * ROTATION_SPEED;
+      const fullRotations = Math.ceil(currentRotation / 360);
+      // Ensure at least 1 full rotation
+      completionTargetRef.current = Math.max(fullRotations, 1) * 360;
+    }
+  }, [isLoading, isManualRefreshing]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
   const handleConnectionToggle = () => {
     if (connectionStatus.is_connected) {
       onDisconnect();
@@ -70,10 +146,15 @@ const PortSelector: React.FC<PortSelectorProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={onRefresh}
-                disabled={isLoading}
+                onClick={handleRefreshClick}
+                disabled={isLoading || isManualRefreshing}
               >
-                <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+                <RefreshCw
+                  size={12}
+                  style={{
+                    transform: isManualRefreshing ? `rotate(${rotation}deg)` : undefined,
+                  }}
+                />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
