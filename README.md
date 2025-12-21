@@ -423,6 +423,7 @@ This project stands on the shoulders of amazing open-source projects:
 <details>
 <summary><b>Version History</b></summary>
 
+- **v1.3.1** - Bug fix for frame segmentation - simplified UI by removing standalone Delimiter mode.
 - **v1.3.0** - Auto-update feature, enhanced log viewer with search/line numbers, quick command improvements, modern UI components (shadcn).
 - **v1.2.0** - Frame segmentation, internationalization, timezone support, and advanced configuration options.
 - **v1.1.0** - Periodic sending, quick command lists, light/dark theme UI.
