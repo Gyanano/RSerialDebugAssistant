@@ -599,7 +599,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                     <div className="flex items-center gap-2">
                       <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.mode')}:</span>
                       <div className="flex rounded-md overflow-hidden flex-1 border" style={{ borderColor: colors.borderLight }}>
-                        {(['Timeout', 'Delimiter', 'Combined'] as FrameSegmentationMode[]).map((mode) => (
+                        {(['Timeout', 'Combined'] as FrameSegmentationMode[]).map((mode) => (
                           <Button
                             key={mode}
                             variant={frameSegmentationConfig.mode === mode ? 'default' : 'ghost'}
@@ -613,25 +613,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                       </div>
                     </div>
 
-                    {/* Timeout setting */}
-                    {(frameSegmentationConfig.mode === 'Timeout' || frameSegmentationConfig.mode === 'Combined') && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Timeout:</span>
-                        <Input
-                          type="number"
-                          min="10"
-                          max="1000"
-                          step="10"
+                    {/* Timeout setting - always shown since both modes use timeout */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Timeout:</span>
+                      <Input
+                        type="number"
+                        min="10"
+                        max="1000"
+                        step="10"
                           value={frameSegmentationConfig.timeout_ms}
                           onChange={(e) => handleTimeoutChange(parseInt(e.target.value, 10) || 10)}
                           className="w-20 h-7 text-xs text-right"
                         />
                         <span className="text-xs" style={{ color: colors.textTertiary }}>ms (10-1000)</span>
                       </div>
-                    )}
 
-                    {/* Delimiter setting */}
-                    {(frameSegmentationConfig.mode === 'Delimiter' || frameSegmentationConfig.mode === 'Combined') && (
+                    {/* Delimiter setting - only shown in Combined mode */}
+                    {frameSegmentationConfig.mode === 'Combined' && (
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2">
                           <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.delimiterLabel')}:</span>

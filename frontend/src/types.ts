@@ -87,7 +87,7 @@ export interface SpecialCharConfig {
 }
 
 // Frame segmentation types
-export type FrameSegmentationMode = 'Timeout' | 'Delimiter' | 'Combined';
+export type FrameSegmentationMode = 'Timeout' | 'Combined';
 
 export type FrameDelimiter =
   | 'AnyNewline'

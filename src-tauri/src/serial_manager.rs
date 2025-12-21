@@ -197,9 +197,8 @@ impl SerialManager {
                             }
                         }
 
-                        // Check for delimiter-based segmentation
-                        if seg_config.mode == FrameSegmentationMode::Delimiter ||
-                           seg_config.mode == FrameSegmentationMode::Combined {
+                        // Check for delimiter-based segmentation (only in Combined mode)
+                        if seg_config.mode == FrameSegmentationMode::Combined {
 
                             // Handle AnyNewline specially - it matches \r, \n, or \r\n as single delimiter
                             if seg_config.delimiter.is_any_newline() {

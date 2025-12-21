@@ -124,7 +124,8 @@ pub enum ExportFormat {
 pub enum FrameSegmentationMode {
     #[default]
     Timeout,
-    Delimiter,
+    /// Combined mode: flushes on either delimiter OR timeout (whichever comes first)
+    /// This ensures data is always displayed even if no delimiter is present
     Combined,
 }
 
