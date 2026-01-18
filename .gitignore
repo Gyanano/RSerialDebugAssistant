@@ -60,3 +60,4 @@ coverage/
 *.md
 !README.md
 !README.zh-CN.md
+!ANALYSIS_PLAN.md
