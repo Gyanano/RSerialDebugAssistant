@@ -16,13 +16,13 @@
 
 ## Bugs/Behavioral Issues Identified
 1. **Serial config parity/stop bits not honored**  
-   - `serial_manager.rs`: `Parity::Mark`/`Parity::Space` mapped to `serialport::Parity::None`, and `StopBits::OnePointFive` mapped to `StopBits::One`, so user selections are ignored.  
+   - `serial_manager.rs` (`SerialManager::connect`): `Parity::Mark`/`Parity::Space` mapped to `serialport::Parity::None`, and `StopBits::OnePointFive` mapped to `StopBits::One`, so user selections are ignored.  
    - Plan: map to supported variants (if available) or return a user-visible error when unsupported.
 2. **Configured timeout ignored**  
    - `serial_manager.rs`: port timeout hardcoded to 50ms; `SerialConfig.timeout` is never applied.  
    - Plan: use `config.timeout` or clamp to a safe range, and surface validation errors to the UI.
 3. **Checksum encoding mismatch for non-UTF8 text**  
-   - `App.tsx`: checksum calculation uses `TextEncoder` (UTF-8) even when GBK is selected, so bytes sent (GBK) and checksum differ.  
+   - `App.tsx` (`handleSendData`): checksum calculation uses `TextEncoder` (UTF-8) even when GBK is selected, so bytes sent (GBK) and checksum differ.  
    - Plan: compute checksum on bytes encoded with selected encoding (use backend `encode_text` or encoding_rs in frontend).
 
 ## Optimization Opportunities
