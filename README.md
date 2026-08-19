@@ -6,6 +6,7 @@
 
 **A professional-grade, cross-platform serial debugging tool built with Tauri 2.0 + React 18**
 
+[![Release](https://img.shields.io/github/v/release/Gyanano/RSerialDebugAssistant)](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-2.0-purple.svg)](https://tauri.app/)
@@ -72,7 +73,7 @@ Whether you're debugging Arduino projects, communicating with industrial sensors
 
 ### Download Pre-built Binaries
 
-Download the latest release from the project repository:
+Download the [latest GitHub Release](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest). The version number on that page is the source of truth; this README does not list releases by hand.
 
 | Platform | Format | Notes |
 |----------|--------|-------|
@@ -422,14 +423,5 @@ This project stands on the shoulders of amazing open-source projects:
 
 ⭐ **If you find this project helpful, please consider giving it a star on GitHub!**
 
-<details>
-<summary><b>Version History</b></summary>
-
-- **v1.3.1** - Bug fix for frame segmentation - simplified UI by removing standalone Delimiter mode.
-- **v1.3.0** - Auto-update feature, enhanced log viewer with search/line numbers, quick command improvements, modern UI components (shadcn).
-- **v1.2.0** - Frame segmentation, internationalization, timezone support, and advanced configuration options.
-- **v1.1.0** - Periodic sending, quick command lists, light/dark theme UI.
-- **v1.0.0** - Initial release with core serial debugging functionality.
-
-</details>
+Version history lives on [GitHub Releases](https://github.com/Gyanano/RSerialDebugAssistant/releases). Each tagged build also gets notes generated from commits since the previous tag.
 

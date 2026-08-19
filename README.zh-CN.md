@@ -6,6 +6,7 @@
 
 **一个专业级、跨平台的串行调试工具，基于 Tauri 2.0 + React 18 构建**
 
+[![Release](https://img.shields.io/github/v/release/Gyanano/RSerialDebugAssistant)](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-2.0-purple.svg)](https://tauri.app/)
@@ -72,7 +73,7 @@
 
 ### 下载预编译二进制文件
 
-从项目仓库下载最新版本：
+到 [最新 GitHub Release](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest) 下载。版本号以该页面为准，不必在 README 里手写。
 
 | 平台 | 格式 | 说明 |
 |------|------|------|
@@ -422,14 +423,5 @@ MIT 许可证允许你在适当署名的情况下自由使用、修改和分发�
 
 ⭐ **如果你觉得本项目有帮助，请考虑在 GitHub 上给个 Star！**
 
-<details>
-<summary><b>版本历史</b></summary>
-
-- **v1.3.1** - 帧分段功能修复 - 移除独立的分隔符模式，简化 UI。
-- **v1.3.0** - 自动更新功能、增强的日志查看器（搜索/行号）、快速命令改进、现代化 UI 组件（shadcn）。
-- **v1.2.0** - 帧分段功能、国际化、时区支持及高级配置选项。
-- **v1.1.0** - 定期发送、快速命令列表、亮色/深色主题 UI。
-- **v1.0.0** - 初始版本，包含核心串行调试功能。
-
-</details>
+版本历史见 [GitHub Releases](https://github.com/Gyanano/RSerialDebugAssistant/releases)。每次打 Tag 发版时，CI 会根据相对上一版本的提交自动生成说明。
 

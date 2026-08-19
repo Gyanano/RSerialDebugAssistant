@@ -53,6 +53,8 @@ macOS CI 用 Developer ID Application 签名 + App Store Connect API 公证。�
 
 缺一则不编译。工作流：`.github/workflows/release.yml`。
 
+不要在 README 里手写版本号或版本历史。最新版本用 GitHub Release 徽章显示，变更说明由 CI 根据两次 Tag 之间的提交生成，写在 GitHub Releases 上。
+
 分支：`main` = 日常开发；`release` = 发版线，不要直接往 `release` 上提交。`feature/*` 从 `main` 拉，`hotfix/*` 从 `release` 拉。
 
 第一次启用 CI：先把含 workflow 的 commit 推到 `main`，再从该 commit 建并推送 `release`；GitHub Actions 权限设为 Read and write。已有 Tag（如 `V1.3.1`）不会自动重编。

@@ -65,6 +65,8 @@ git push origin V1.4.0
 
 Pushing the tag is what starts the workflow. The gate job then re-checks the other two conditions. If any check fails, Windows/macOS builds are skipped.
 
+Do not add version lines to `README.md` / `README.zh-CN.md`. Those files link to [Releases](https://github.com/Gyanano/RSerialDebugAssistant/releases); CI fills the GitHub Release body from commits since the previous tag.
+
 Artifacts:
 
 - Windows x64 NSIS `.exe` — unsigned; this is what the in-app updater looks for

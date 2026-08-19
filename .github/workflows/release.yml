@@ -109,3 +109,21 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  release-notes:
+    name: Fill release notes
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Generate notes from commits since the previous tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          NOTES="$(gh api "repos/${REPO}/releases/generate-notes" -f tag_name="${TAG}" --jq .body)"
+          BODY="$(printf '%s\n\n%s\n' "${TAG}" "${NOTES}")"
+          gh release edit "${TAG}" --repo "${REPO}" --notes "${BODY}"
