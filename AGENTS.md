@@ -39,7 +39,9 @@ macOS 打包需要 `src-tauri/icons/` 里的 `icon.png` 和 `icon.icns`，不能
 
 历史 Tag 是 `Vx.y.z`（大写 V）。更新器按 `v` / `V` 都能解析。
 
-应用内更新：Windows 认 NSIS `.exe`，macOS 认 `.dmg`。
+应用内更新：Windows 认 NSIS `.exe`（不签名），macOS 认已公证的 `.dmg`。
+
+macOS CI 用 Developer ID Application 签名 + App Store Connect API 公证。凭证在仓库 Actions Secrets 里（`APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_SIGNING_IDENTITY`、`APPLE_TEAM_ID`、`APPLE_API_ISSUER`、`APPLE_API_KEY`、`APPLE_API_KEY_P8`）。Windows job 不注入这些变量。本地 `tauri.conf.json` 的 `bundle.macOS.signingIdentity` 是 `-`（ad-hoc），CI 里 `APPLE_SIGNING_IDENTITY` 会覆盖它。
 
 ## 发版门禁（三条件都要满足）
 

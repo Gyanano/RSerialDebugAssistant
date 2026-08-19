@@ -65,10 +65,12 @@ git push origin V1.4.0
 
 Pushing the tag is what starts the workflow. The gate job then re-checks the other two conditions. If any check fails, Windows/macOS builds are skipped.
 
-Artifacts (unsigned unless you add signing secrets later):
+Artifacts:
 
-- Windows x64 NSIS `.exe` — this is what the in-app updater looks for
-- macOS Apple Silicon `.dmg` — first open may need right-click → Open (Gatekeeper)
+- Windows x64 NSIS `.exe` — unsigned; this is what the in-app updater looks for
+- macOS Apple Silicon `.dmg` — Developer ID signed and notarized when the Apple secrets are present
+
+macOS signing uses GitHub Actions secrets (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_P8`). The Windows job does not receive those secrets.
 
 Intel Mac `.dmg` is not built yet.
 
