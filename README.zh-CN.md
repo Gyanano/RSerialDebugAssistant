@@ -76,9 +76,10 @@
 
 | 平台 | 格式 | 说明 |
 |------|------|------|
-| Windows | `.msi` 或 `.exe` | 推荐使用安装程序格式 |
+| Windows | `.exe`（NSIS） | 在版本 Tag 上由 GitHub Actions 构建 |
+| macOS（Apple Silicon） | `.dmg` | 在版本 Tag 上由 GitHub Actions 构建 |
 
-> **注意：** 预编译二进制文件可能需要在本地构建。请查看仓库获取最新的发布版本。
+只有同时满足「提交在 `release` 分支上」「`version.json` 有变更」「推送了版本 Tag」三个条件才会编译。详见 [`.github/BRANCHING.md`](.github/BRANCHING.md)。
 
 ### 从源代码构建
 
@@ -105,7 +106,8 @@ cargo tauri build
 ```
 
 编译后的应用程序二进制文件位置：
-- **Windows**: `src-tauri/target/release/bundle/msi/`
+- **Windows**: `src-tauri/target/release/bundle/nsis/`
+- **macOS**: `src-tauri/target/release/bundle/dmg/`
 
 ## 🚀 快速开始
 

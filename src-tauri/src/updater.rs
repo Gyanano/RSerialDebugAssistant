@@ -51,9 +51,13 @@ pub struct DownloadProgress {
     pub percentage: u8,
 }
 
-/// Parse version string (e.g., "v1.2.0" or "1.2.0") into (major, minor, patch)
+fn strip_version_prefix(version: &str) -> &str {
+    version.trim().trim_start_matches(['v', 'V'])
+}
+
+/// Parse version string (e.g., "v1.2.0", "V1.2.0", or "1.2.0") into (major, minor, patch)
 fn parse_version(version: &str) -> Option<(u32, u32, u32)> {
-    let v = version.trim_start_matches('v');
+    let v = strip_version_prefix(version);
     let parts: Vec<&str> = v.split('.').collect();
     if parts.len() != 3 {
         return None;
@@ -72,14 +76,89 @@ fn compare_versions(version_a: &str, version_b: &str) -> Option<Ordering> {
     Some(a.cmp(&b))
 }
 
-/// Find the .exe asset from release assets (excludes .msi)
-fn find_exe_asset(assets: &[GitHubAsset]) -> Option<&GitHubAsset> {
-    assets
-        .iter()
-        .find(|asset| {
-            let name_lower = asset.name.to_lowercase();
-            name_lower.ends_with(".exe") && !name_lower.ends_with(".msi")
-        })
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TargetPlatform {
+    Windows,
+    Macos,
+    Linux,
+}
+
+fn current_platform() -> TargetPlatform {
+    if cfg!(target_os = "windows") {
+        TargetPlatform::Windows
+    } else if cfg!(target_os = "macos") {
+        TargetPlatform::Macos
+    } else {
+        TargetPlatform::Linux
+    }
+}
+
+fn is_arm_macos_asset(name: &str) -> bool {
+    name.contains("aarch64") || name.contains("arm64") || name.contains("apple-silicon")
+}
+
+fn is_intel_macos_asset(name: &str) -> bool {
+    name.contains("x64") || name.contains("x86_64") || name.contains("intel")
+}
+
+/// Pick the installer that matches the running OS (and Mac CPU when possible).
+fn find_platform_asset(assets: &[GitHubAsset], platform: TargetPlatform) -> Option<&GitHubAsset> {
+    match platform {
+        TargetPlatform::Windows => assets
+            .iter()
+            .find(|asset| {
+                let name = asset.name.to_lowercase();
+                name.ends_with(".exe") && !name.ends_with(".msi")
+            })
+            .or_else(|| {
+                assets
+                    .iter()
+                    .find(|asset| asset.name.to_lowercase().ends_with(".msi"))
+            }),
+        TargetPlatform::Macos => {
+            let dmgs: Vec<&GitHubAsset> = assets
+                .iter()
+                .filter(|asset| asset.name.to_lowercase().ends_with(".dmg"))
+                .collect();
+            if dmgs.is_empty() {
+                return assets.iter().find(|asset| {
+                    let name = asset.name.to_lowercase();
+                    name.ends_with(".app.tar.gz") || name.ends_with(".app")
+                });
+            }
+
+            let prefer_arm = cfg!(target_arch = "aarch64");
+            if prefer_arm {
+                dmgs.iter()
+                    .copied()
+                    .find(|asset| is_arm_macos_asset(&asset.name.to_lowercase()))
+                    .or_else(|| {
+                        dmgs.iter()
+                            .copied()
+                            .find(|asset| !is_intel_macos_asset(&asset.name.to_lowercase()))
+                    })
+                    .or_else(|| dmgs.first().copied())
+            } else {
+                dmgs.iter()
+                    .copied()
+                    .find(|asset| is_intel_macos_asset(&asset.name.to_lowercase()))
+                    .or_else(|| {
+                        dmgs.iter()
+                            .copied()
+                            .find(|asset| !is_arm_macos_asset(&asset.name.to_lowercase()))
+                    })
+                    .or_else(|| dmgs.first().copied())
+            }
+        }
+        TargetPlatform::Linux => assets
+            .iter()
+            .find(|asset| asset.name.to_lowercase().ends_with(".appimage"))
+            .or_else(|| {
+                assets
+                    .iter()
+                    .find(|asset| asset.name.to_lowercase().ends_with(".deb"))
+            }),
+    }
 }
 
 /// Check for updates by fetching the latest release from GitHub
@@ -107,24 +186,24 @@ pub async fn check_for_updates(current_version: &str) -> Result<UpdateCheckResul
         .await
         .map_err(|e| format!("Failed to parse release data: {}", e))?;
 
-    let latest_version = release.tag_name.trim_start_matches('v').to_string();
-    let current = current_version.trim_start_matches('v');
+    let latest_version = strip_version_prefix(&release.tag_name).to_string();
+    let current = strip_version_prefix(current_version);
 
     let has_update = match compare_versions(&latest_version, current) {
         Some(Ordering::Greater) => true,
         _ => false,
     };
 
-    let exe_asset = find_exe_asset(&release.assets);
+    let asset = find_platform_asset(&release.assets, current_platform());
 
     Ok(UpdateCheckResult {
         has_update,
         current_version: current.to_string(),
         latest_version: latest_version.clone(),
-        download_url: exe_asset.map(|a| a.browser_download_url.clone()),
-        download_size: exe_asset.map(|a| a.size),
+        download_url: asset.map(|a| a.browser_download_url.clone()),
+        download_size: asset.map(|a| a.size),
         release_url: release.html_url,
-        asset_name: exe_asset.map(|a| a.name.clone()),
+        asset_name: asset.map(|a| a.name.clone()),
     })
 }
 
@@ -198,12 +277,22 @@ pub async fn download_update(
 
 /// Launch the installer and exit the application
 pub fn launch_installer_and_exit(installer_path: &str) -> Result<(), String> {
-    // Spawn the installer process
-    Command::new(installer_path)
+    let mut command = if cfg!(target_os = "macos") {
+        let mut cmd = Command::new("open");
+        cmd.arg(installer_path);
+        cmd
+    } else if cfg!(target_os = "linux") && !installer_path.to_lowercase().ends_with(".appimage") {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(installer_path);
+        cmd
+    } else {
+        Command::new(installer_path)
+    };
+
+    command
         .spawn()
         .map_err(|e| format!("Failed to launch installer: {}", e))?;
 
-    // Exit the application
     std::process::exit(0);
 }
 
@@ -215,6 +304,7 @@ mod tests {
     fn test_parse_version() {
         assert_eq!(parse_version("1.2.0"), Some((1, 2, 0)));
         assert_eq!(parse_version("v1.2.0"), Some((1, 2, 0)));
+        assert_eq!(parse_version("V1.2.0"), Some((1, 2, 0)));
         assert_eq!(parse_version("1.10.5"), Some((1, 10, 5)));
         assert_eq!(parse_version("invalid"), None);
     }
@@ -225,5 +315,34 @@ mod tests {
         assert_eq!(compare_versions("1.2.0", "1.2.0"), Some(Ordering::Equal));
         assert_eq!(compare_versions("1.2.0", "1.3.0"), Some(Ordering::Less));
         assert_eq!(compare_versions("2.0.0", "1.9.9"), Some(Ordering::Greater));
+    }
+
+    fn asset(name: &str) -> GitHubAsset {
+        GitHubAsset {
+            name: name.to_string(),
+            browser_download_url: format!("https://example.com/{name}"),
+            size: 1,
+        }
+    }
+
+    #[test]
+    fn windows_prefers_exe_over_dmg() {
+        let assets = vec![asset("app.dmg"), asset("app.exe"), asset("app.msi")];
+        let found = find_platform_asset(&assets, TargetPlatform::Windows).unwrap();
+        assert_eq!(found.name, "app.exe");
+    }
+
+    #[test]
+    fn macos_prefers_dmg_over_exe() {
+        let assets = vec![asset("app.exe"), asset("app.dmg")];
+        let found = find_platform_asset(&assets, TargetPlatform::Macos).unwrap();
+        assert_eq!(found.name, "app.dmg");
+    }
+
+    #[test]
+    fn linux_prefers_appimage() {
+        let assets = vec![asset("app.exe"), asset("app.AppImage"), asset("app.deb")];
+        let found = find_platform_asset(&assets, TargetPlatform::Linux).unwrap();
+        assert_eq!(found.name, "app.AppImage");
     }
 }

@@ -1,0 +1,91 @@
+name: Release
+
+# Tag push is the only trigger. The gate job then requires:
+#   1. the tagged commit is on `release`
+#   2. version.json changed vs the previous version tag
+#   3. the tag is Vx.y.z / vx.y.z and matches version.json
+on:
+  push:
+    tags:
+      - 'V*.*.*'
+      - 'v*.*.*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Evaluate release conditions
+        id: check
+        run: bash scripts/ci-release-gate.sh
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            platform: windows-latest
+            args: --bundles nsis
+            rust_targets: x86_64-pc-windows-msvc
+          - name: macOS
+            platform: macos-latest
+            args: --target aarch64-apple-darwin --bundles dmg
+            rust_targets: aarch64-apple-darwin
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build and attach to GitHub Release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: .
+          tagName: ${{ github.ref_name }}
+          releaseName: RSerial Debug Assistant ${{ needs.gate.outputs.version }}
+          releaseBody: |
+            ${{ github.ref_name }}
+
+            - Windows: `.exe` (NSIS installer)
+            - macOS (Apple Silicon): `.dmg`
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { getChecksumLength, calculateChecksum } from '../utils/checksum';
 import { getTextEncoding, textToHex as encodeTextToHex, hexToText as decodeHexToText } from '../utils/encoding';
+import { isMacPlatform } from '../utils/platform';
 
 // shadcn components
 import { Button } from '@/components/ui/button';
@@ -228,7 +229,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
   const getPlaceholderText = () => {
     if (format === 'Text') {
-      return t('sendPanel.placeholderText');
+      return t(isMacPlatform() ? 'sendPanel.placeholderTextMac' : 'sendPanel.placeholderText');
     } else {
       return t('sendPanel.placeholderHex');
     }
@@ -323,33 +324,27 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
           {/* Mode Toggle */}
           <div
-            className="p-0.5 rounded-[6px] flex text-xs font-medium"
+            className="p-0.5 rounded-[6px] flex"
             style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
           >
-            <button
+            <Button
+              variant={sendMode === 'normal' ? 'default' : 'ghost'}
+              size="xs"
               onClick={() => setSendMode('normal')}
-              className="px-2 py-0.5 rounded-[4px] transition-all flex items-center space-x-1"
-              style={{
-                backgroundColor: sendMode === 'normal' ? colors.accent : 'transparent',
-                color: sendMode === 'normal' ? '#ffffff' : colors.textSecondary,
-                boxShadow: sendMode === 'normal' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
-              }}
+              className="gap-1 h-6 px-2"
             >
               <FileText size={12} />
               <span>{t('sendPanel.normal')}</span>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant={sendMode === 'quickCommand' ? 'default' : 'ghost'}
+              size="xs"
               onClick={() => setSendMode('quickCommand')}
-              className="px-2 py-0.5 rounded-[4px] transition-all flex items-center space-x-1"
-              style={{
-                backgroundColor: sendMode === 'quickCommand' ? colors.accent : 'transparent',
-                color: sendMode === 'quickCommand' ? '#ffffff' : colors.textSecondary,
-                boxShadow: sendMode === 'quickCommand' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
-              }}
+              className="gap-1 h-6 px-2"
             >
               <List size={12} />
               <span>{t('sendPanel.quick')}</span>
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -413,31 +408,25 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
             {/* Format Selector */}
             <div
-              className="p-0.5 rounded-[6px] flex text-xs font-medium"
+              className="p-0.5 rounded-[6px] flex"
               style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
             >
-              <button
+              <Button
+                variant={format === 'Text' ? 'default' : 'ghost'}
+                size="xs"
                 onClick={() => handleFormatChange('Text')}
-                className="px-3 py-0.5 rounded-[4px] transition-all"
-                style={{
-                  backgroundColor: format === 'Text' ? colors.accent : 'transparent',
-                  color: format === 'Text' ? '#ffffff' : colors.textSecondary,
-                  boxShadow: format === 'Text' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
-                }}
+                className="h-6 px-3"
               >
                 Text
-              </button>
-              <button
+              </Button>
+              <Button
+                variant={format === 'Hex' ? 'default' : 'ghost'}
+                size="xs"
                 onClick={() => handleFormatChange('Hex')}
-                className="px-3 py-0.5 rounded-[4px] transition-all"
-                style={{
-                  backgroundColor: format === 'Hex' ? colors.accent : 'transparent',
-                  color: format === 'Hex' ? '#ffffff' : colors.textSecondary,
-                  boxShadow: format === 'Hex' ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
-                }}
+                className="h-6 px-3"
               >
                 Hex
-              </button>
+              </Button>
             </div>
           </div>
         )}

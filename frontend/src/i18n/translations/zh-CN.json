@@ -99,6 +99,7 @@
     "endIndexTitle": "结束索引 (0 或 -1 = 最后一个字节, -2 = 倒数第二个)",
     "indexHint": "(0/-1=最后, -2=倒数第二...)",
     "placeholderText": "在此输入消息... (Ctrl+Enter 发送)",
+    "placeholderTextMac": "在此输入消息... (⌘+Enter 发送)",
     "placeholderHex": "输入十六进制数据 (如: 48 65 6C 6C 6F)...",
     "checksumAlgorithm": "校验和算法",
     "showChecksumOptions": "显示校验和选项",

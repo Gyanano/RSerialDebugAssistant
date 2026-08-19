@@ -5,6 +5,7 @@ import { LogEntry, TextEncoding, SpecialCharConfig, RecordingStatus, ReceiveDisp
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { loadTimezone, formatTimestampWithTimezone } from '../utils/timezone';
+import { isModifierPressed } from '../utils/platform';
 
 // shadcn components
 import { Button } from '@/components/ui/button';
@@ -422,7 +423,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'f') {
+      if (isModifierPressed(e) && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
         openSearch();
         return;

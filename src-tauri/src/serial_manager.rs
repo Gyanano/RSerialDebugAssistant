@@ -3,7 +3,7 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 use log::{debug, error, info, warn};
 use serialport::{SerialPort, SerialPortType};
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fs::{File, OpenOptions, create_dir_all};
 use std::io::Write;
 use std::path::PathBuf;
@@ -110,7 +110,7 @@ impl SerialManager {
             port_infos.push(port_info);
         }
 
-        Ok(port_infos)
+        Ok(sanitize_listed_ports(port_infos))
     }
 
     pub fn connect(&mut self, port_name: &str, config: SerialConfig) -> Result<()> {
@@ -1043,10 +1043,143 @@ fn format_bytes_as_text(data: &[u8], encoding: &TextEncoding, special_chars: &Sp
     result
 }
 
+/// Deduplicate macOS callout/tty pairs, drop system virtual ports, and put
+/// USB adapters first so the UI auto-selects a useful device.
+fn sanitize_listed_ports(ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    let ports = filter_macos_tty_duplicates(ports);
+    let ports = filter_macos_system_virtual_ports(ports);
+    sort_usb_ports_first(ports)
+}
+
+/// macOS exposes each serial device twice: `/dev/cu.*` (callout, for outbound
+/// I/O) and `/dev/tty.*` (waits for carrier detect). Keep callout devices and
+/// drop the matching tty entry. Ports on other platforms are unchanged.
+fn filter_macos_tty_duplicates(ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    let cu_suffixes: HashSet<String> = ports
+        .iter()
+        .filter_map(|p| p.port_name.strip_prefix("/dev/cu.").map(str::to_string))
+        .collect();
+
+    ports
+        .into_iter()
+        .filter(|p| match p.port_name.strip_prefix("/dev/tty.") {
+            Some(suffix) => !cu_suffixes.contains(suffix),
+            None => true,
+        })
+        .collect()
+}
+
+/// Hide macOS nodes that are never useful as a debug serial adapter.
+fn filter_macos_system_virtual_ports(ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    const HIDDEN: &[&str] = &["debug-console", "Bluetooth-Incoming-Port"];
+    ports
+        .into_iter()
+        .filter(|p| {
+            !HIDDEN.iter().any(|suffix| {
+                p.port_name.ends_with(suffix)
+                    || p.port_name.ends_with(&format!(".{suffix}"))
+            })
+        })
+        .collect()
+}
+
+fn sort_usb_ports_first(mut ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    ports.sort_by(|a, b| {
+        let rank = |p: &SerialPortInfo| if p.port_type == "USB" { 0 } else { 1 };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.port_name.cmp(&b.port_name))
+    });
+    ports
+}
+
 /// Format data based on display settings
 fn format_data_for_display(data: &[u8], settings: &DisplaySettings) -> String {
     match settings.format {
         ReceiveDisplayFormat::Hex => format_bytes_as_hex(data),
         ReceiveDisplayFormat::Txt => format_bytes_as_text(data, &settings.encoding, &settings.special_char_config),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn port(name: &str) -> SerialPortInfo {
+        port_with_type(name, "USB")
+    }
+
+    fn port_with_type(name: &str, port_type: &str) -> SerialPortInfo {
+        SerialPortInfo {
+            port_name: name.to_string(),
+            port_type: port_type.to_string(),
+            description: None,
+            manufacturer: None,
+            product: None,
+            serial_number: None,
+            vid: None,
+            pid: None,
+        }
+    }
+
+    fn names(ports: &[SerialPortInfo]) -> Vec<&str> {
+        ports.iter().map(|p| p.port_name.as_str()).collect()
+    }
+
+    #[test]
+    fn drops_tty_when_matching_cu_exists() {
+        let filtered = filter_macos_tty_duplicates(vec![
+            port("/dev/cu.debug-console"),
+            port("/dev/tty.debug-console"),
+            port("/dev/cu.usbserial-140"),
+            port("/dev/tty.usbserial-140"),
+        ]);
+
+        assert_eq!(
+            names(&filtered),
+            vec!["/dev/cu.debug-console", "/dev/cu.usbserial-140"]
+        );
+    }
+
+    #[test]
+    fn keeps_tty_when_no_matching_cu_exists() {
+        let filtered = filter_macos_tty_duplicates(vec![port("/dev/tty.usbserial-140")]);
+        assert_eq!(names(&filtered), vec!["/dev/tty.usbserial-140"]);
+    }
+
+    #[test]
+    fn leaves_windows_and_linux_ports_unchanged() {
+        let filtered = filter_macos_tty_duplicates(vec![
+            port("COM3"),
+            port("/dev/ttyUSB0"),
+            port("/dev/ttyACM0"),
+        ]);
+
+        assert_eq!(
+            names(&filtered),
+            vec!["COM3", "/dev/ttyUSB0", "/dev/ttyACM0"]
+        );
+    }
+
+    #[test]
+    fn hides_macos_system_virtual_ports() {
+        let filtered = sanitize_listed_ports(vec![
+            port("/dev/cu.debug-console"),
+            port("/dev/cu.Bluetooth-Incoming-Port"),
+            port("/dev/cu.usbserial-140"),
+            port_with_type("/dev/cu.HUAWEIFreeBudsPro3", "Unknown"),
+        ]);
+
+        assert_eq!(names(&filtered), vec!["/dev/cu.usbserial-140", "/dev/cu.HUAWEIFreeBudsPro3"]);
+    }
+
+    #[test]
+    fn lists_usb_ports_before_others() {
+        let filtered = sanitize_listed_ports(vec![
+            port_with_type("/dev/cu.HUAWEIFreeBudsPro3", "Unknown"),
+            port("/dev/cu.usbserial-140"),
+        ]);
+
+        assert_eq!(names(&filtered), vec!["/dev/cu.usbserial-140", "/dev/cu.HUAWEIFreeBudsPro3"]);
     }
 }

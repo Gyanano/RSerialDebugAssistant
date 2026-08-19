@@ -99,6 +99,7 @@
     "endIndexTitle": "End index (0 or -1 = last byte, -2 = second to last)",
     "indexHint": "(0/-1=last, -2=2nd last...)",
     "placeholderText": "Type your message here... (Ctrl+Enter to send)",
+    "placeholderTextMac": "Type your message here... (⌘+Enter to send)",
     "placeholderHex": "Enter hex data (e.g., 48 65 6C 6C 6F or 48656C6C6F)...",
     "checksumAlgorithm": "Checksum algorithm",
     "showChecksumOptions": "Show checksum options",

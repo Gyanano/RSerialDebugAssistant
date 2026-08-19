@@ -60,3 +60,5 @@ coverage/
 *.md
 !README.md
 !README.zh-CN.md
+!AGENTS.md
+!.github/**/*.md

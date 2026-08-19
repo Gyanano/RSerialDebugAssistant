@@ -14,6 +14,8 @@ import { appendChecksum } from './utils/checksum';
 import { loadTimezone, formatDateForFilename, getSystemTimezoneOffset, parseUtcOffset } from './utils/timezone';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
+import { Button } from './components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
 
 const QUICK_COMMANDS_STORAGE_KEY = 'serial-debug-quick-commands';
 const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
@@ -685,25 +687,24 @@ function App() {
           {/* Collapsed Sidebar View */}
           {sidebarCollapsed ? (
             <div className="flex flex-col items-center pt-4">
-              <button
-                onClick={toggleSidebarCollapse}
-                className="p-2 rounded-md transition-colors focus:outline-none"
-                style={{
-                  color: colors.textSecondary,
-                  backgroundColor: 'transparent'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = colors.textPrimary;
-                  e.currentTarget.style.backgroundColor = colors.bgHover;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = colors.textSecondary;
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-                title={t('sidebar.expandSidebar')}
-              >
-                <PanelLeft size={20} />
-              </button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={toggleSidebarCollapse}
+                      className="h-9 w-9"
+                      style={{ color: colors.textSecondary }}
+                    >
+                      <PanelLeft size={20} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t('sidebar.expandSidebar')}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           ) : (
             <>
@@ -714,44 +715,42 @@ function App() {
                   <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('app.subtitle')}</p>
                 </div>
                 <div className="flex items-center gap-1 ml-2">
-                  <button
-                    onClick={toggleSidebarCollapse}
-                    className="p-1.5 rounded-md transition-colors focus:outline-none"
-                    style={{
-                      color: colors.textSecondary,
-                      backgroundColor: 'transparent'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = colors.textPrimary;
-                      e.currentTarget.style.backgroundColor = colors.bgHover;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = colors.textSecondary;
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                    title={t('sidebar.collapseSidebar')}
-                  >
-                    <PanelLeftClose size={16} />
-                  </button>
-                  <button
-                    onClick={() => setShowSettings(true)}
-                    className="p-1.5 rounded-md transition-colors focus:outline-none"
-                    style={{
-                      color: colors.textSecondary,
-                      backgroundColor: 'transparent'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = colors.textPrimary;
-                      e.currentTarget.style.backgroundColor = colors.bgHover;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = colors.textSecondary;
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                    title={t('sidebar.settings')}
-                  >
-                    <Settings size={16} />
-                  </button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={toggleSidebarCollapse}
+                          className="h-7 w-7"
+                          style={{ color: colors.textSecondary }}
+                        >
+                          <PanelLeftClose size={16} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{t('sidebar.collapseSidebar')}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setShowSettings(true)}
+                          className="h-7 w-7"
+                          style={{ color: colors.textSecondary }}
+                        >
+                          <Settings size={16} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{t('sidebar.settings')}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
 

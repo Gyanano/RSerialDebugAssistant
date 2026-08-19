@@ -76,9 +76,10 @@ Download the latest release from the project repository:
 
 | Platform | Format | Notes |
 |----------|--------|-------|
-| Windows  | `.msi` or `.exe` | Recommended installer format |
+| Windows  | `.exe` (NSIS) | Built by GitHub Actions on version tags |
+| macOS (Apple Silicon) | `.dmg` | Built by GitHub Actions on version tags |
 
-> **Note:** Pre-built binaries may need to be built locally. Check the repository for the latest release builds.
+Release builds run only when a version tag is pushed **and** that commit is on `release` **and** `version.json` changed. See [`.github/BRANCHING.md`](.github/BRANCHING.md).
 
 ### Build from Source
 
@@ -105,7 +106,8 @@ cargo tauri build
 ```
 
 The compiled application binaries will be located in:
-- **Windows**: `src-tauri/target/release/bundle/msi/`
+- **Windows**: `src-tauri/target/release/bundle/nsis/`
+- **macOS**: `src-tauri/target/release/bundle/dmg/`
 
 ## 🚀 Quick Start
 
