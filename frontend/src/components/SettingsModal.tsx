@@ -22,7 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
-  enabled: true,
+  enabled: false,
   convertLF: true,
   convertCR: true,
   convertTab: true,

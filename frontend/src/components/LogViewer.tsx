@@ -27,7 +27,7 @@ const STORAGE_KEY_SHOW_LINE_NUMBERS = 'serialDebug_showLineNumbers';
 const SCROLL_BOTTOM_THRESHOLD = 50;
 
 const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
-  enabled: true,
+  enabled: false,
   convertLF: true,
   convertCR: true,
   convertTab: true,

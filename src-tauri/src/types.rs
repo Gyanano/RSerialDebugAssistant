@@ -203,7 +203,7 @@ pub struct SpecialCharConfig {
 impl Default for SpecialCharConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             convert_lf: true,
             convert_cr: true,
             convert_tab: true,
