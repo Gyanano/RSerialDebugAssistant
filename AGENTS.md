@@ -57,4 +57,58 @@ macOS CI 用 Developer ID Application 签名 + App Store Connect API 公证。�
 
 分支（标准 git-flow）：`main` = 生产发版线，不要直接往 `main` 上提交；`develop` = 日常开发（GitHub 默认分支）。`feature/*`、`bugfix/*`、`release/x.y.z` 从 `develop` 拉，`hotfix/x.y.z` 从 `main` 拉。
 
+## git-flow 常用流程
+
+注意：把分支**推送**到远端不会删除本地分支；删除发生在"完成"时（PR 合并后，或 `git flow feature finish`）。远端分支要单独删（GitHub 合并 PR 后点 Delete branch，或 `git push origin --delete <branch>`）。
+
+### feature / bugfix（日常开发，从 develop 拉）
+
+```bash
+git checkout develop && git pull
+git checkout -b feature/xxx            # bugfix 同理：bugfix/xxx
+# …开发、提交（Conventional Commits）…
+git push -u origin feature/xxx         # 推送不删本地分支
+# 开 PR 合入 develop，合并后清理：
+git checkout develop && git pull
+git branch -d feature/xxx
+git push origin --delete feature/xxx   # 或在 GitHub 上点 Delete branch
+```
+
+本地只有小改动、不走 PR 时，可以直接 `--no-ff` 合回 develop 再删分支（仓库里 `1da5a4f` 就是例子）。
+
+### release/x.y.z（发版，从 develop 拉）
+
+```bash
+git checkout develop && git pull
+git checkout -b release/1.4.0
+# 提升 version.json / Cargo.toml / tauri.conf.json / frontend/package.json 到同一版本
+git push -u origin release/1.4.0       # 开 PR 合入 main
+git checkout main && git pull
+git tag V1.4.0 && git push origin V1.4.0   # 推 Tag 触发 CI 构建
+git checkout develop && git merge --no-ff main   # 回合 develop
+git push origin develop
+git branch -d release/1.4.0 && git push origin --delete release/1.4.0
+```
+
+### hotfix/x.y.z（紧急修复，从 main 拉）
+
+```bash
+git checkout main && git pull
+git checkout -b hotfix/1.3.2
+# 修复 + 提升四个文件的 patch 版本
+git push -u origin hotfix/1.3.2        # 开 PR 合入 main
+git checkout main && git pull
+git tag V1.3.2 && git push origin V1.3.2
+git checkout develop && git merge --no-ff main   # 修复回合 develop
+git push origin develop
+git branch -d hotfix/1.3.2 && git push origin --delete hotfix/1.3.2
+```
+
+### 同步与清理
+
+```bash
+git fetch --prune                      # 清理远端已删除分支的本地跟踪
+git checkout develop && git pull       # 日常开工前保持 develop 最新
+```
+
 第一次启用 CI：先把含 workflow 的 commit 推到 `develop`，再从该 commit 建并推送 `main`（生产线）；GitHub Actions 权限设为 Read and write。已有 Tag（如 `V1.3.1`）不会自动重编。
