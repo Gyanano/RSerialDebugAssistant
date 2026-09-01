@@ -2,7 +2,7 @@
 
 Tauri 2 + React 18 串口调试工具。前端在 `frontend/`，Rust 在 `src-tauri/`。UI 用 shadcn（new-york / zinc），组件在 `frontend/src/components/ui/`。
 
-发版流程、分支模型和 CI 门禁的完整说明在 `.github/BRANCHING.md`。改 CI、打 Tag、合 `release` 之前先读它。
+发版流程、分支模型和 CI 门禁的完整说明在 `.github/BRANCHING.md`。改 CI、打 Tag、合 `main`（生产线）之前先读它。
 
 ## 本地运行（macOS）
 
@@ -47,7 +47,7 @@ macOS CI 用 Developer ID Application 签名 + App Store Connect API 公证。�
 
 双端安装包（Windows NSIS `.exe` + macOS Apple Silicon `.dmg`）只在推送版本 Tag 时启动，并由 `scripts/ci-release-gate.sh` 再检查：
 
-1. 该 Tag 的 commit 在 `origin/release` 上（合进了 release，不是只在 `main`）
+1. 该 Tag 的 commit 在 `origin/main`（生产线）上（合进了 main，不是只在 `develop`）
 2. `version.json` 相对上一个版本 Tag 有变更
 3. Tag 为 `Vx.y.z` / `vx.y.z`，且与 `version.json` 一致
 
@@ -55,6 +55,6 @@ macOS CI 用 Developer ID Application 签名 + App Store Connect API 公证。�
 
 不要在 README 里手写版本号或版本历史。最新版本用 GitHub Release 徽章显示，变更说明由 CI 根据两次 Tag 之间的提交生成，写在 GitHub Releases 上。
 
-分支：`main` = 日常开发；`release` = 发版线，不要直接往 `release` 上提交。`feature/*` 从 `main` 拉，`hotfix/*` 从 `release` 拉。
+分支（标准 git-flow）：`main` = 生产发版线，不要直接往 `main` 上提交；`develop` = 日常开发（GitHub 默认分支）。`feature/*`、`bugfix/*`、`release/x.y.z` 从 `develop` 拉，`hotfix/x.y.z` 从 `main` 拉。
 
-第一次启用 CI：先把含 workflow 的 commit 推到 `main`，再从该 commit 建并推送 `release`；GitHub Actions 权限设为 Read and write。已有 Tag（如 `V1.3.1`）不会自动重编。
+第一次启用 CI：先把含 workflow 的 commit 推到 `develop`，再从该 commit 建并推送 `main`（生产线）；GitHub Actions 权限设为 Read and write。已有 Tag（如 `V1.3.1`）不会自动重编。

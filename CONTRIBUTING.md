@@ -6,24 +6,22 @@ Thanks for your interest in contributing! This document explains how the reposit
 
 ## Branch model (git-flow)
 
-This repository is managed with a **git-flow** branch structure:
+This repository is managed with a standard **git-flow** branch structure (using `main` as the production branch, in place of the historical `master`):
 
 | Branch | git-flow role | Purpose |
 |--------|---------------|---------|
-| `release` | *master* (production) | Shippable line. Only code that is meant to ship lands here. **Never commit directly** — always via pull request. |
-| `main` | *develop* | Day-to-day integration branch. All feature work is merged here first. |
-| `feature/<name>` | feature branches | New features or improvements, branched from `main`, merged back into `main` via PR. |
-| `bugfix/<name>` | bugfix branches | Non-urgent fixes, branched from `main`, merged back into `main` via PR. |
-| `hotfix/<name>` | hotfix branches | Urgent production fixes, branched from `release`, merged back into `release` via PR, then synced to `main`. |
-| `version/<x.y.z>` | release branches | Version-bump / release preparation, branched from `main`, merged into `release` via PR. |
-
-> The release-prep prefix is `version/` instead of git-flow's default `release/` because the permanent `release` branch already occupies that ref namespace — Git cannot have both `release` and `release/<something>`.
+| `main` | *master* (production) | Shippable line. Only code that is meant to ship lands here. **Never commit directly** — always via pull request. |
+| `develop` | *develop* | Day-to-day integration branch, and the GitHub default branch. All feature work is merged here first. |
+| `feature/<name>` | feature branches | New features or improvements, branched from `develop`, merged back into `develop` via PR. |
+| `bugfix/<name>` | bugfix branches | Non-urgent fixes, branched from `develop`, merged back into `develop` via PR. |
+| `release/<x.y.z>` | release branches | Release preparation / version bump, branched from `develop`, merged into `main` via PR, then merged back into `develop`. |
+| `hotfix/<x.y.z>` | hotfix branches | Urgent production fixes, branched from `main`, merged back into `main` via PR, then merged back into `develop`. |
 
 ```
-feature/*  ──PR──► main ──PR (version/* bump)──► release ──tag Vx.y.z──► CI builds installers
-bugfix/*   ──PR──► main
-hotfix/*   ──PR──► release ──tag──► CI
-                   └──PR──► main   (keep development in sync)
+feature/* ──PR──► develop ──PR──► release/x.y.z ──PR──► main ──tag Vx.y.z──► CI builds installers
+bugfix/*  ──PR──► develop            │
+hotfix/*  ──PR──► main ──tag──► CI   └─merge back──► develop
+                  └─merge back──► develop
 ```
 
 ## Optional: git-flow CLI setup
@@ -31,11 +29,11 @@ hotfix/*   ──PR──► release ──tag──► CI
 If you use the [`git-flow`](https://github.com/nvie/gitflow) CLI, run these once after cloning to match the repo's branch names:
 
 ```bash
-git config gitflow.branch.master release
-git config gitflow.branch.develop main
+git config gitflow.branch.master main
+git config gitflow.branch.develop develop
 git config gitflow.prefix.feature feature/
 git config gitflow.prefix.bugfix bugfix/
-git config gitflow.prefix.release version/
+git config gitflow.prefix.release release/
 git config gitflow.prefix.hotfix hotfix/
 git config gitflow.prefix.support support/
 git config gitflow.prefix.versiontag V
@@ -46,18 +44,18 @@ The CLI is entirely optional — plain `git checkout -b ...` + pull requests fol
 ## Developing a new feature
 
 1. **Fork** the repository and clone your fork.
-2. Make sure your local `main` is up to date:
+2. Make sure your local `develop` is up to date:
    ```bash
-   git checkout main && git pull
+   git checkout develop && git pull
    ```
-3. Create a feature branch **from `main`**:
+3. Create a feature branch **from `develop`**:
    ```bash
    git checkout -b feature/your-feature-name
    # or with the CLI: git flow feature start your-feature-name
    ```
 4. Make your changes and test them locally (see [Local development](#local-development)).
 5. Commit using [Conventional Commits](#commit-messages).
-6. Push and open a **pull request targeting `main`** (never `release`).
+6. Push and open a **pull request targeting `develop`** (never `main`).
 7. After review and merge, delete the feature branch.
 
 ## Commit messages
@@ -88,16 +86,17 @@ Do **not** add version numbers or changelogs to the README files — releases an
 
 Full details, including the CI gate conditions and macOS signing, are in [.github/BRANCHING.md](.github/BRANCHING.md). In short:
 
-1. Create `version/x.y.z` from `main`, bump all four version files, PR into `release`.
-2. Tag the merge commit on `release` as `Vx.y.z` (capital V, matching `version.json`) and push the tag.
-3. CI verifies the gate (commit on `release` + `version.json` changed + tag matches) and builds the Windows `.exe` and macOS `.dmg`.
+1. Create `release/x.y.z` from `develop`, bump all four version files, PR into `main`.
+2. Tag the merge commit on `main` as `Vx.y.z` (capital V, matching `version.json`) and push the tag.
+3. CI verifies the gate (commit on `main` + `version.json` changed + tag matches) and builds the Windows `.exe` and macOS `.dmg`.
+4. Merge `main` back into `develop`.
 
 ## Hotfixes
 
-1. Branch `hotfix/<name>` **from `release`** (not from `main`).
-2. Fix, bump the **patch** version in all four files, PR back into `release`.
-3. Tag `Vx.y.z+1` on `release` and push — CI ships it.
-4. Open a PR from `release` into `main` so the fix is not lost in development.
+1. Branch `hotfix/x.y.z` **from `main`** (not from `develop`).
+2. Fix, bump the **patch** version in all four files, PR back into `main`.
+3. Tag the new `Vx.y.z` on `main` and push — CI ships it.
+4. Merge `main` back into `develop` so the fix is not lost in development.
 
 ## Local development
 

@@ -80,7 +80,7 @@
 | Windows | `.exe`（NSIS） | 在版本 Tag 上由 GitHub Actions 构建 |
 | macOS（Apple Silicon） | `.dmg` | 在版本 Tag 上由 GitHub Actions 构建 |
 
-只有同时满足「提交在 `release` 分支上」「`version.json` 有变更」「推送了版本 Tag」三个条件才会编译。详见 [`.github/BRANCHING.md`](.github/BRANCHING.md)。
+只有同时满足「提交在 `main`（生产线）分支上」「`version.json` 有变更」「推送了版本 Tag」三个条件才会编译。详见 [`.github/BRANCHING.md`](.github/BRANCHING.md)。
 
 ### 从源代码构建
 
@@ -323,7 +323,7 @@ npm run build                       # Vite 生产构建
 
 欢迎贡献！帮助我们改进项目：
 
-> 📖 **请先阅读 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)**——其中说明了 git-flow 分支模型（`main` 用于开发、`release` 用于发版、`feature/*` / `hotfix/*` 分支）以及完整的贡献流程。
+> 📖 **请先阅读 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)**——其中说明了 git-flow 分支模型（`develop` 用于开发、`main` 用于发版、`feature/*` / `release/*` / `hotfix/*` 分支）以及完整的贡献流程。
 
 ### 开发入门
 

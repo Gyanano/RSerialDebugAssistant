@@ -1,7 +1,7 @@
 name: Release
 
 # Tag push is the only trigger. The gate job then requires:
-#   1. the tagged commit is on `release`
+#   1. the tagged commit is on `main` (the production branch)
 #   2. version.json changed vs the previous version tag
 #   3. the tag is Vx.y.z / vx.y.z and matches version.json
 on:

@@ -80,7 +80,7 @@ Download the [latest GitHub Release](https://github.com/Gyanano/RSerialDebugAssi
 | Windows  | `.exe` (NSIS) | Built by GitHub Actions on version tags |
 | macOS (Apple Silicon) | `.dmg` | Built by GitHub Actions on version tags |
 
-Release builds run only when a version tag is pushed **and** that commit is on `release` **and** `version.json` changed. See [`.github/BRANCHING.md`](.github/BRANCHING.md).
+Release builds run only when a version tag is pushed **and** that commit is on `main` (the production branch) **and** `version.json` changed. See [`.github/BRANCHING.md`](.github/BRANCHING.md).
 
 ### Build from Source
 
@@ -323,7 +323,7 @@ We are actively working on new features to make RSerial Debug Assistant even mor
 
 Contributions are welcome! Help us improve the project:
 
-> 📖 **Read [CONTRIBUTING.md](CONTRIBUTING.md) first** — it documents the git-flow branch model (`main` for development, `release` for shipping, `feature/*` / `hotfix/*` branches) and the full contribution workflow.
+> 📖 **Read [CONTRIBUTING.md](CONTRIBUTING.md) first** — it documents the git-flow branch model (`develop` for development, `main` for shipping, `feature/*` / `release/*` / `hotfix/*` branches) and the full contribution workflow.
 
 ### Getting Started with Development
 

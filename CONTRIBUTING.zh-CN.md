@@ -6,24 +6,22 @@
 
 ## 分支模型（git-flow）
 
-本仓库使用 **git-flow** 分支结构进行管理：
+本仓库使用标准 **git-flow** 分支结构（生产分支采用现代惯例的 `main`，取代传统的 `master`）：
 
 | 分支 | git-flow 角色 | 用途 |
 |------|---------------|------|
-| `release` | *master*（生产） | 发版线。只有准备发布的代码才进入此分支。**禁止直接提交**——一律通过 Pull Request。 |
-| `main` | *develop* | 日常集成分支。所有功能开发先合并到这里。 |
-| `feature/<名称>` | feature 分支 | 新功能或改进，从 `main` 拉出，通过 PR 合回 `main`。 |
-| `bugfix/<名称>` | bugfix 分支 | 非紧急修复，从 `main` 拉出，通过 PR 合回 `main`。 |
-| `hotfix/<名称>` | hotfix 分支 | 紧急线上修复，从 `release` 拉出，通过 PR 合回 `release`，再同步回 `main`。 |
-| `version/<x.y.z>` | release 分支 | 版本号提升 / 发版准备，从 `main` 拉出，通过 PR 合入 `release`。 |
-
-> 发版准备分支的前缀用 `version/` 而不是 git-flow 默认的 `release/`，因为常驻的 `release` 分支已经占用了该 ref 命名空间——Git 无法同时存在 `release` 和 `release/<某名称>` 两种引用。
+| `main` | *master*（生产） | 发版线。只有准备发布的代码才进入此分支。**禁止直接提交**——一律通过 Pull Request。 |
+| `develop` | *develop* | 日常集成分支，也是 GitHub 默认分支。所有功能开发先合并到这里。 |
+| `feature/<名称>` | feature 分支 | 新功能或改进，从 `develop` 拉出，通过 PR 合回 `develop`。 |
+| `bugfix/<名称>` | bugfix 分支 | 非紧急修复，从 `develop` 拉出，通过 PR 合回 `develop`。 |
+| `release/<x.y.z>` | release 分支 | 发版准备 / 版本号提升，从 `develop` 拉出，通过 PR 合入 `main`，再回合 `develop`。 |
+| `hotfix/<x.y.z>` | hotfix 分支 | 紧急线上修复，从 `main` 拉出，通过 PR 合回 `main`，再回合 `develop`。 |
 
 ```
-feature/*  ──PR──► main ──PR（version/* 版本提升）──► release ──打 Tag Vx.y.z──► CI 构建安装包
-bugfix/*   ──PR──► main
-hotfix/*   ──PR──► release ──打 Tag──► CI
-                   └──PR──► main（保持开发线同步）
+feature/* ──PR──► develop ──PR──► release/x.y.z ──PR──► main ──打 Tag Vx.y.z──► CI 构建安装包
+bugfix/*  ──PR──► develop            │
+hotfix/*  ──PR──► main ──打 Tag──► CI └─回合──► develop
+                  └─回合──► develop
 ```
 
 ## 可选：git-flow CLI 配置
@@ -31,11 +29,11 @@ hotfix/*   ──PR──► release ──打 Tag──► CI
 如果你使用 [`git-flow`](https://github.com/nvie/gitflow) 命令行工具，克隆后执行一次以下命令即可匹配本仓库的分支命名：
 
 ```bash
-git config gitflow.branch.master release
-git config gitflow.branch.develop main
+git config gitflow.branch.master main
+git config gitflow.branch.develop develop
 git config gitflow.prefix.feature feature/
 git config gitflow.prefix.bugfix bugfix/
-git config gitflow.prefix.release version/
+git config gitflow.prefix.release release/
 git config gitflow.prefix.hotfix hotfix/
 git config gitflow.prefix.support support/
 git config gitflow.prefix.versiontag V
@@ -46,18 +44,18 @@ CLI 完全是可选的——直接用 `git checkout -b ...` 加 Pull Request 遵
 ## 开发新功能
 
 1. **Fork** 仓库并克隆你的 fork。
-2. 确保本地 `main` 是最新的：
+2. 确保本地 `develop` 是最新的：
    ```bash
-   git checkout main && git pull
+   git checkout develop && git pull
    ```
-3. **从 `main`** 创建功能分支：
+3. **从 `develop`** 创建功能分支：
    ```bash
    git checkout -b feature/your-feature-name
    # 或使用 CLI：git flow feature start your-feature-name
    ```
 4. 进行更改并在本地充分测试（见[本地开发](#本地开发)）。
 5. 使用 [Conventional Commits](#提交信息) 规范提交。
-6. 推送并打开**目标为 `main` 的 Pull Request**（永远不要直接对 `release` 提 PR）。
+6. 推送并打开**目标为 `develop` 的 Pull Request**（永远不要直接对 `main` 提 PR）。
 7. 评审合并后删除功能分支。
 
 ## 提交信息
@@ -88,16 +86,17 @@ ci(macos): sign and notarize the GitHub dmg
 
 完整说明（包括 CI 门禁条件和 macOS 签名）见 [.github/BRANCHING.md](.github/BRANCHING.md)。简要流程：
 
-1. 从 `main` 创建 `version/x.y.z` 分支，提升全部四个版本文件，提 PR 合入 `release`。
-2. 在 `release` 的合并提交上打 Tag `Vx.y.z`（大写 V，与 `version.json` 一致）并推送。
-3. CI 校验门禁（提交在 `release` 上 + `version.json` 有变更 + Tag 一致），然后构建 Windows `.exe` 和 macOS `.dmg`。
+1. 从 `develop` 创建 `release/x.y.z` 分支，提升全部四个版本文件，提 PR 合入 `main`。
+2. 在 `main` 的合并提交上打 Tag `Vx.y.z`（大写 V，与 `version.json` 一致）并推送。
+3. CI 校验门禁（提交在 `main` 上 + `version.json` 有变更 + Tag 一致），然后构建 Windows `.exe` 和 macOS `.dmg`。
+4. 将 `main` 回合到 `develop`。
 
 ## 紧急修复（Hotfix）
 
-1. **从 `release`**（而不是 `main`）拉出 `hotfix/<名称>` 分支。
-2. 修复问题，在全部四个文件中提升 **patch** 版本号，提 PR 合回 `release`。
-3. 在 `release` 上打 Tag `Vx.y.z+1` 并推送——CI 自动发布。
-4. 再开一个从 `release` 到 `main` 的 PR，确保修复不丢回开发线。
+1. **从 `main`**（而不是 `develop`）拉出 `hotfix/x.y.z` 分支。
+2. 修复问题，在全部四个文件中提升 **patch** 版本号，提 PR 合回 `main`。
+3. 在 `main` 上打新的 Tag `Vx.y.z` 并推送——CI 自动发布。
+4. 将 `main` 回合到 `develop`，确保修复不丢回开发线。
 
 ## 本地开发
 
