@@ -323,6 +323,8 @@ npm run build                       # Vite 生产构建
 
 欢迎贡献！帮助我们改进项目：
 
+> 📖 **请先阅读 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)**——其中说明了 git-flow 分支模型（`main` 用于开发、`release` 用于发版、`feature/*` / `hotfix/*` 分支）以及完整的贡献流程。
+
 ### 开发入门
 
 1. **Fork** GitHub 上的仓库

@@ -323,6 +323,8 @@ We are actively working on new features to make RSerial Debug Assistant even mor
 
 Contributions are welcome! Help us improve the project:
 
+> 📖 **Read [CONTRIBUTING.md](CONTRIBUTING.md) first** — it documents the git-flow branch model (`main` for development, `release` for shipping, `feature/*` / `hotfix/*` branches) and the full contribution workflow.
+
 ### Getting Started with Development
 
 1. **Fork** the repository on GitHub
