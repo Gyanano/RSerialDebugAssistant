@@ -8,21 +8,37 @@
 //! duplicated emission blocks over to this component; until then the
 //! segmenter is exercised only by tests.
 
-use crate::types::{FrameDelimiter, FrameSegmentationConfig, FrameSegmentationMode};
+use crate::types::{FrameSegmentationConfig, FrameSegmentationMode};
 use std::time::{Duration, Instant};
+
+/// Hard cap on frame size (RFC #3): a frame may never exceed this many
+/// bytes. Continuous streams with no delimiter are cut into cap-sized
+/// chunks during `feed`, so memory stays bounded and every frame carries a
+/// size guarantee. 64 KiB matches the planned IPC batch budget.
+pub const DEFAULT_MAX_FRAME_BYTES: usize = 64 * 1024;
 
 /// Bytes in, frames out. The caller drives it with explicit timestamps so
 /// tests never need to sleep.
 pub struct FrameSegmenter {
     config: FrameSegmentationConfig,
+    max_frame_bytes: usize,
     buffer: Vec<u8>,
     last_data_time: Instant,
 }
 
 impl FrameSegmenter {
     pub fn new(config: FrameSegmentationConfig, now: Instant) -> Self {
+        Self::with_max_frame_bytes(config, now, DEFAULT_MAX_FRAME_BYTES)
+    }
+
+    pub fn with_max_frame_bytes(
+        config: FrameSegmentationConfig,
+        now: Instant,
+        max_frame_bytes: usize,
+    ) -> Self {
         Self {
             config,
+            max_frame_bytes,
             buffer: Vec::new(),
             last_data_time: now,
         }
@@ -35,32 +51,46 @@ impl FrameSegmenter {
         self.config = config;
     }
 
-    pub fn config(&self) -> &FrameSegmentationConfig {
-        &self.config
-    }
-
     /// Feed bytes just read from the port. Returns frames closed by
     /// delimiter processing — delimiter bytes are included in the frame,
     /// matching the legacy behavior. Delimiter processing only happens in
-    /// Combined mode; in Timeout mode everything waits for `flush_if_idle`.
+    /// Combined mode; in Timeout mode everything waits for `flush_if_idle`
+    /// or the hard cap.
+    ///
+    /// Hard cap (new in Step 2, replaces legacy unbounded growth): a
+    /// delimiter only closes a frame if the match lies fully inside the
+    /// first `max_frame_bytes` of the buffer; beyond that the buffer is cut
+    /// into cap-sized chunks. A delimiter straddling the cap boundary can
+    /// therefore be split — same family as the pinned CRLF-across-reads
+    /// quirk, deterministic and bounded. Invariant on return:
+    /// `buffer.len() < max_frame_bytes`.
     pub fn feed(&mut self, bytes: &[u8], now: Instant) -> Vec<Vec<u8>> {
         self.buffer.extend_from_slice(bytes);
         self.last_data_time = now;
 
+        let delimiter = self.config.delimiter.to_bytes();
+        let combined = self.config.mode == FrameSegmentationMode::Combined;
         let mut frames = Vec::new();
-        if self.config.mode == FrameSegmentationMode::Combined {
-            if self.config.delimiter.is_any_newline() {
-                while let Some((pos, len)) = find_any_newline(&self.buffer) {
-                    let frame_end = pos + len;
-                    frames.push(self.buffer.drain(..frame_end).collect());
-                }
-            } else {
-                let delimiter = self.config.delimiter.to_bytes();
-                while let Some(pos) = find_delimiter(&self.buffer, &delimiter) {
-                    let frame_end = pos + delimiter.len();
-                    frames.push(self.buffer.drain(..frame_end).collect());
+        loop {
+            if combined {
+                let hit = {
+                    let window = &self.buffer[..self.buffer.len().min(self.max_frame_bytes)];
+                    if self.config.delimiter.is_any_newline() {
+                        find_any_newline(window)
+                    } else {
+                        find_delimiter(window, &delimiter).map(|pos| (pos, delimiter.len()))
+                    }
+                };
+                if let Some((pos, len)) = hit {
+                    frames.push(self.buffer.drain(..pos + len).collect());
+                    continue;
                 }
             }
+            if self.buffer.len() >= self.max_frame_bytes {
+                frames.push(self.buffer.drain(..self.max_frame_bytes).collect());
+                continue;
+            }
+            break;
         }
         frames
     }
@@ -131,6 +161,7 @@ pub(crate) fn find_any_newline(data: &[u8]) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::FrameDelimiter;
 
     fn combined(delimiter: FrameDelimiter) -> FrameSegmentationConfig {
         FrameSegmentationConfig {
@@ -261,5 +292,51 @@ mod tests {
             seg.flush_if_idle(t0 + Duration::from_millis(19)),
             Some(b"ab".to_vec())
         );
+    }
+
+    #[test]
+    fn hard_cap_cuts_continuous_stream_without_waiting_for_idle() {
+        let t0 = Instant::now();
+        let mut seg =
+            FrameSegmenter::with_max_frame_bytes(timeout_mode(), t0, 1024);
+        // 2500 bytes with no idle gap: two full chunks cut immediately,
+        // residue waits for the timeout flush.
+        let frames = seg.feed(&vec![b'x'; 2500], t0);
+        assert_eq!(frames.len(), 2);
+        assert!(frames.iter().all(|f| f.len() == 1024));
+        assert_eq!(seg.pending().len(), 452);
+        assert_eq!(
+            seg.flush_if_idle(t0 + Duration::from_millis(11)),
+            Some(vec![b'x'; 452])
+        );
+    }
+
+    #[test]
+    fn delimiter_within_cap_window_wins_over_hard_cut() {
+        let t0 = Instant::now();
+        let mut seg = FrameSegmenter::with_max_frame_bytes(
+            combined(FrameDelimiter::LF),
+            t0,
+            8,
+        );
+        // LF inside the first 8 bytes closes a short frame; rest pends.
+        let frames = seg.feed(b"ab\ncdefgh", t0);
+        assert_eq!(frames, vec![b"ab\n".to_vec()]);
+        assert_eq!(seg.pending(), b"cdefgh");
+    }
+
+    #[test]
+    fn delimiter_beyond_cap_window_gets_hard_cut() {
+        let t0 = Instant::now();
+        let mut seg = FrameSegmenter::with_max_frame_bytes(
+            combined(FrameDelimiter::LF),
+            t0,
+            8,
+        );
+        // LF at position 8 is outside the 8-byte window: hard cut first,
+        // then the lone LF frames on its own (cap-boundary split, pinned).
+        let frames = seg.feed(b"abcdefgh\n", t0);
+        assert_eq!(frames, vec![b"abcdefgh".to_vec(), b"\n".to_vec()]);
+        assert!(seg.pending().is_empty());
     }
 }

@@ -1,4 +1,4 @@
-use crate::framing::{find_any_newline, find_delimiter};
+use crate::framing::FrameSegmenter;
 use crate::types::*;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
@@ -188,9 +188,57 @@ impl SerialManager {
         let mut read_port = port.try_clone()?;
 
         thread::spawn(move || {
-            let mut buffer = [0; 1024];
-            let mut accumulated_data = Vec::new();
-            let mut last_data_time = Instant::now();
+            let mut read_buffer = [0u8; 1024];
+            let initial_config = frame_segmentation_config.lock()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
+            let mut segmenter = FrameSegmenter::new(initial_config, Instant::now());
+
+            // Single frame-emission path (replaces the four duplicated
+            // blocks): text recording -> display formatting -> log buffer -> stats.
+            let emit_frame = |frame_data: Vec<u8>, disp_settings: &DisplaySettings| {
+                // Write to text recording file with timestamp and RX label
+                if let Ok(mut guard) = text_file.lock() {
+                    if let Some(ref mut file) = *guard {
+                        let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                        let timestamp = format_timestamp_with_offset(tz_offset);
+                        let text = String::from_utf8_lossy(&frame_data);
+                        let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
+                    }
+                }
+
+                // Format display text and timestamp based on current settings
+                let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                let display_text = format_data_for_display(&frame_data, disp_settings);
+                let timestamp_formatted = if disp_settings.show_timestamps {
+                    Some(format_timestamp_with_offset(tz_offset))
+                } else {
+                    None
+                };
+
+                let data_len = frame_data.len() as u64;
+                let log_entry = LogEntry {
+                    timestamp: Utc::now(),
+                    direction: Direction::Received,
+                    data: frame_data,
+                    format: DataFormat::Text,
+                    port_name: port_name_clone.clone(),
+                    display_text,
+                    timestamp_formatted,
+                };
+
+                if let Ok(mut logs_guard) = logs.lock() {
+                    logs_guard.push_back(log_entry);
+                    let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+                    while logs_guard.len() > max_entries {
+                        logs_guard.pop_front();
+                    }
+                }
+
+                if let Ok(mut stats_guard) = stats.lock() {
+                    stats_guard.bytes_received += data_len;
+                }
+            };
 
             loop {
                 // Check shutdown flag
@@ -199,246 +247,41 @@ impl SerialManager {
                     break;
                 }
 
-                // Get current segmentation config
+                // Get current segmentation config (legacy re-read each iteration)
                 let seg_config = frame_segmentation_config.lock()
                     .map(|guard| guard.clone())
                     .unwrap_or_default();
-                let timeout_duration = Duration::from_millis(seg_config.timeout_ms);
+                segmenter.set_config(seg_config);
 
                 // Get current display settings for formatting
                 let disp_settings = display_settings.lock()
                     .map(|guard| guard.clone())
                     .unwrap_or_default();
 
-                match read_port.read(&mut buffer) {
+                match read_port.read(&mut read_buffer) {
                     Ok(bytes_read) if bytes_read > 0 => {
-                        let received_bytes = &buffer[..bytes_read];
-                        accumulated_data.extend_from_slice(received_bytes);
-                        last_data_time = Instant::now();
+                        let received_bytes = &read_buffer[..bytes_read];
 
-                        // Write to raw recording file (raw bytes, no framing)
+                        // Write to raw recording file (raw bytes, pre-framing tap)
                         if let Ok(mut guard) = raw_file.lock() {
                             if let Some(ref mut file) = *guard {
                                 let _ = file.write_all(received_bytes);
                             }
                         }
 
-                        // Check for delimiter-based segmentation (only in Combined mode)
-                        if seg_config.mode == FrameSegmentationMode::Combined {
-
-                            // Handle AnyNewline specially - it matches \r, \n, or \r\n as single delimiter
-                            if seg_config.delimiter.is_any_newline() {
-                                while let Some((pos, len)) = find_any_newline(&accumulated_data) {
-                                    let frame_end = pos + len;
-                                    let frame_data: Vec<u8> = accumulated_data.drain(..frame_end).collect();
-                                    let data_len = frame_data.len();
-
-                                    // Write to text recording file with timestamp and RX label
-                                    if let Ok(mut guard) = text_file.lock() {
-                                        if let Some(ref mut file) = *guard {
-                                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                                            let timestamp = format_timestamp_with_offset(tz_offset);
-                                            let text = String::from_utf8_lossy(&frame_data);
-                                            let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
-                                        }
-                                    }
-
-                                    // Format display text and timestamp based on current settings
-                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                                    let display_text = format_data_for_display(&frame_data, &disp_settings);
-                                    let timestamp_formatted = if disp_settings.show_timestamps {
-                                        Some(format_timestamp_with_offset(tz_offset))
-                                    } else {
-                                        None
-                                    };
-
-                                    let log_entry = LogEntry {
-                                        timestamp: Utc::now(),
-                                        direction: Direction::Received,
-                                        data: frame_data,
-                                        format: DataFormat::Text,
-                                        port_name: port_name_clone.clone(),
-                                        display_text,
-                                        timestamp_formatted,
-                                    };
-
-                                    if let Ok(mut logs_guard) = logs.lock() {
-                                        logs_guard.push_back(log_entry);
-                                        let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
-                                        while logs_guard.len() > max_entries {
-                                            logs_guard.pop_front();
-                                        }
-                                    }
-
-                                    if let Ok(mut stats_guard) = stats.lock() {
-                                        stats_guard.bytes_received += data_len as u64;
-                                    }
-                                }
-                            } else {
-                                // Standard delimiter matching
-                                let delimiter_bytes = seg_config.delimiter.to_bytes();
-
-                                // Process all complete frames in accumulated data
-                                while let Some(pos) = find_delimiter(&accumulated_data, &delimiter_bytes) {
-                                    let frame_end = pos + delimiter_bytes.len();
-                                    let frame_data: Vec<u8> = accumulated_data.drain(..frame_end).collect();
-                                    let data_len = frame_data.len();
-
-                                    // Write to text recording file with timestamp and RX label
-                                    if let Ok(mut guard) = text_file.lock() {
-                                        if let Some(ref mut file) = *guard {
-                                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                                            let timestamp = format_timestamp_with_offset(tz_offset);
-                                            let text = String::from_utf8_lossy(&frame_data);
-                                            let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
-                                        }
-                                    }
-
-                                    // Format display text and timestamp based on current settings
-                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                                    let display_text = format_data_for_display(&frame_data, &disp_settings);
-                                    let timestamp_formatted = if disp_settings.show_timestamps {
-                                        Some(format_timestamp_with_offset(tz_offset))
-                                    } else {
-                                        None
-                                    };
-
-                                    let log_entry = LogEntry {
-                                        timestamp: Utc::now(),
-                                        direction: Direction::Received,
-                                        data: frame_data,
-                                        format: DataFormat::Text,
-                                        port_name: port_name_clone.clone(),
-                                        display_text,
-                                        timestamp_formatted,
-                                    };
-
-                                    if let Ok(mut logs_guard) = logs.lock() {
-                                        logs_guard.push_back(log_entry);
-                                        let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
-                                        while logs_guard.len() > max_entries {
-                                            logs_guard.pop_front();
-                                        }
-                                    }
-
-                                    if let Ok(mut stats_guard) = stats.lock() {
-                                        stats_guard.bytes_received += data_len as u64;
-                                    }
-                                }
-                            }
+                        for frame in segmenter.feed(received_bytes, Instant::now()) {
+                            emit_frame(frame, &disp_settings);
                         }
                     }
                     Ok(_) => {
-                        // Check if we should flush accumulated data based on timeout
-                        let should_flush_timeout =
-                            (seg_config.mode == FrameSegmentationMode::Timeout ||
-                             seg_config.mode == FrameSegmentationMode::Combined) &&
-                            !accumulated_data.is_empty() &&
-                            last_data_time.elapsed() > timeout_duration;
-
-                        if should_flush_timeout {
-                            let data_len = accumulated_data.len();
-
-                            // Write to text recording file with timestamp and RX label
-                            if let Ok(mut guard) = text_file.lock() {
-                                if let Some(ref mut file) = *guard {
-                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                                    let timestamp = format_timestamp_with_offset(tz_offset);
-                                    let text = String::from_utf8_lossy(&accumulated_data);
-                                    let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
-                                }
-                            }
-
-                            // Format display text and timestamp based on current settings
-                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                            let display_text = format_data_for_display(&accumulated_data, &disp_settings);
-                            let timestamp_formatted = if disp_settings.show_timestamps {
-                                Some(format_timestamp_with_offset(tz_offset))
-                            } else {
-                                None
-                            };
-
-                            let log_entry = LogEntry {
-                                timestamp: Utc::now(),
-                                direction: Direction::Received,
-                                data: accumulated_data.clone(),
-                                format: DataFormat::Text,
-                                port_name: port_name_clone.clone(),
-                                display_text,
-                                timestamp_formatted,
-                            };
-
-                            if let Ok(mut logs_guard) = logs.lock() {
-                                logs_guard.push_back(log_entry);
-                                let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
-                                while logs_guard.len() > max_entries {
-                                    logs_guard.pop_front();
-                                }
-                            }
-
-                            // Update received bytes statistics
-                            if let Ok(mut stats_guard) = stats.lock() {
-                                stats_guard.bytes_received += data_len as u64;
-                            }
-
-                            accumulated_data.clear();
+                        if let Some(frame) = segmenter.flush_if_idle(Instant::now()) {
+                            emit_frame(frame, &disp_settings);
                         }
                         thread::sleep(Duration::from_millis(1));
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                        // Check if we should flush accumulated data on timeout
-                        let should_flush_timeout =
-                            (seg_config.mode == FrameSegmentationMode::Timeout ||
-                             seg_config.mode == FrameSegmentationMode::Combined) &&
-                            !accumulated_data.is_empty() &&
-                            last_data_time.elapsed() > timeout_duration;
-
-                        if should_flush_timeout {
-                            let data_len = accumulated_data.len();
-
-                            // Write to text recording file with timestamp and RX label
-                            if let Ok(mut guard) = text_file.lock() {
-                                if let Some(ref mut file) = *guard {
-                                    let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                                    let timestamp = format_timestamp_with_offset(tz_offset);
-                                    let text = String::from_utf8_lossy(&accumulated_data);
-                                    let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
-                                }
-                            }
-
-                            // Format display text and timestamp based on current settings
-                            let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
-                            let display_text = format_data_for_display(&accumulated_data, &disp_settings);
-                            let timestamp_formatted = if disp_settings.show_timestamps {
-                                Some(format_timestamp_with_offset(tz_offset))
-                            } else {
-                                None
-                            };
-
-                            let log_entry = LogEntry {
-                                timestamp: Utc::now(),
-                                direction: Direction::Received,
-                                data: accumulated_data.clone(),
-                                format: DataFormat::Text,
-                                port_name: port_name_clone.clone(),
-                                display_text,
-                                timestamp_formatted,
-                            };
-
-                            if let Ok(mut logs_guard) = logs.lock() {
-                                logs_guard.push_back(log_entry);
-                                let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
-                                while logs_guard.len() > max_entries {
-                                    logs_guard.pop_front();
-                                }
-                            }
-
-                            // Update received bytes statistics
-                            if let Ok(mut stats_guard) = stats.lock() {
-                                stats_guard.bytes_received += data_len as u64;
-                            }
-
-                            accumulated_data.clear();
+                        if let Some(frame) = segmenter.flush_if_idle(Instant::now()) {
+                            emit_frame(frame, &disp_settings);
                         }
                         thread::sleep(Duration::from_millis(1));
                     }
@@ -1479,5 +1322,18 @@ mod tests {
         assert!(manager.get_status().is_connected); // the lie, pinned
         assert!(manager.get_logs().is_empty()); // pending "abc" lost, pinned
         manager.disconnect().unwrap();
+    }
+
+    #[test]
+    fn golden_continuous_stream_hard_capped_frames() {
+        // 150 KiB of back-to-back data with no idle gap: the hard cap must
+        // cut 64 KiB frames without waiting for a timeout, and the residue
+        // flushes once the stream goes quiet.
+        let script: Vec<ScriptEvent> = (0..150)
+            .map(|_| ScriptEvent::Bytes(vec![b'x'; 1024]))
+            .collect();
+        let logs = run_script(script, seg_timeout(), 3);
+        let sizes: Vec<usize> = logs.iter().map(|l| l.data.len()).collect();
+        assert_eq!(sizes, vec![65536, 65536, 22528]);
     }
 }
