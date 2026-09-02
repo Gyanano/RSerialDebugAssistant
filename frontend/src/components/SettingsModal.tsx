@@ -318,6 +318,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   };
 
   // Download update
+  const handleViewReleaseNotes = async () => {
+    if (!updateInfo?.release_url) return;
+    try {
+      await invoke('open_url', { url: updateInfo.release_url });
+    } catch (error) {
+      console.error('Failed to open release notes:', error);
+    }
+  };
+
   const handleDownloadUpdate = async () => {
     if (!updateInfo?.download_url || !updateInfo?.asset_name) return;
 
@@ -726,11 +735,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                       <Button className="flex-1" size="sm" onClick={handleDownloadUpdate}>
                         {t('settings.downloadAndInstall')}
                       </Button>
-                      <Button variant="secondary" size="sm" asChild>
-                        <a href={updateInfo.release_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1">
-                          <ExternalLink size={12} />
-                          <span>{t('settings.viewReleaseNotes')}</span>
-                        </a>
+                      <Button variant="secondary" size="sm" onClick={handleViewReleaseNotes} className="flex items-center gap-1">
+                        <ExternalLink size={12} />
+                        <span>{t('settings.viewReleaseNotes')}</span>
                       </Button>
                       <Button variant="secondary" size="sm" onClick={handleCancelUpdate}>
                         {t('settings.cancel')}

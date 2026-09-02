@@ -436,6 +436,11 @@ async fn launch_installer_and_exit(installer_path: String) -> Result<(), String>
     updater::launch_installer_and_exit(&installer_path)
 }
 
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    updater::open_url(&url)
+}
+
 fn main() {
     env_logger::init();
 
@@ -480,7 +485,8 @@ fn main() {
             get_display_settings,
             check_for_updates,
             download_update,
-            launch_installer_and_exit
+            launch_installer_and_exit,
+            open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
