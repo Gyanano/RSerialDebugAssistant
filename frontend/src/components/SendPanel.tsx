@@ -89,6 +89,10 @@ const SendPanel: React.FC<SendPanelProps> = ({
   const [sendMode, setSendMode] = useState<SendMode>('normal');
   const [isScheduledEnabled, setIsScheduledEnabled] = useState(false);
   const [scheduledInterval, setScheduledInterval] = useState(1000);
+  // Draft string while the interval input is being edited: typing is never
+  // clamped mid-edit; the value commits (clamped) on blur/Enter, Escape
+  // cancels. Prevents "5" snapping to the minimum while typing "50".
+  const [intervalDraft, setIntervalDraft] = useState<string | null>(null);
   const [isScheduledRunning, setIsScheduledRunning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isChecksumExpanded, setIsChecksumExpanded] = useState(false);
@@ -189,9 +193,20 @@ const SendPanel: React.FC<SendPanelProps> = ({
     }
   };
 
-  const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newInterval = Math.max(100, parseInt(e.target.value) || 1000);
-    setScheduledInterval(newInterval);
+  // Interval bounds: 10ms floor (event-push RX path can keep up now),
+  // 60s ceiling, 1s fallback for empty/invalid drafts.
+  const MIN_INTERVAL_MS = 10;
+  const MAX_INTERVAL_MS = 60000;
+
+  const commitIntervalDraft = () => {
+    if (intervalDraft === null) return;
+    const parsed = parseInt(intervalDraft, 10);
+    const next = Number.isNaN(parsed)
+      ? scheduledInterval
+      : Math.min(MAX_INTERVAL_MS, Math.max(MIN_INTERVAL_MS, parsed));
+    setIntervalDraft(null);
+    if (next === scheduledInterval) return;
+    setScheduledInterval(next);
 
     // Restart interval with new timing if already running
     if (isScheduledRunning) {
@@ -199,6 +214,8 @@ const SendPanel: React.FC<SendPanelProps> = ({
       setTimeout(() => startScheduledSending(), 0);
     }
   };
+
+  const cancelIntervalDraft = () => setIntervalDraft(null);
 
   const startScheduledSending = () => {
     if (!value.trim() || !isConnected) return;
@@ -587,12 +604,18 @@ const SendPanel: React.FC<SendPanelProps> = ({
                       <TooltipTrigger asChild>
                         <Input
                           type="number"
-                          value={scheduledInterval}
-                          onChange={handleIntervalChange}
+                          value={intervalDraft ?? String(scheduledInterval)}
+                          onFocus={() => setIntervalDraft(String(scheduledInterval))}
+                          onChange={(e) => setIntervalDraft(e.target.value.replace(/[^0-9]/g, ''))}
+                          onBlur={commitIntervalDraft}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitIntervalDraft();
+                            if (e.key === 'Escape') cancelIntervalDraft();
+                          }}
                           className="w-full h-7 text-xs text-right"
-                          min={100}
-                          max={60000}
-                          step={100}
+                          min={MIN_INTERVAL_MS}
+                          max={MAX_INTERVAL_MS}
+                          step={10}
                           disabled={!isConnected || isScheduledRunning}
                         />
                       </TooltipTrigger>
