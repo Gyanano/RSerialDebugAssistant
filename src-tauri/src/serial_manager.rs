@@ -227,7 +227,6 @@ impl SerialManager {
                                     };
 
                                     let log_entry = LogEntry {
-                                        id: None,
                                         timestamp: Utc::now(),
                                         direction: Direction::Received,
                                         data: frame_data,
@@ -279,7 +278,6 @@ impl SerialManager {
                                     };
 
                                     let log_entry = LogEntry {
-                                        id: None,
                                         timestamp: Utc::now(),
                                         direction: Direction::Received,
                                         data: frame_data,
@@ -335,7 +333,6 @@ impl SerialManager {
                             };
 
                             let log_entry = LogEntry {
-                                id: None,
                                 timestamp: Utc::now(),
                                 direction: Direction::Received,
                                 data: accumulated_data.clone(),
@@ -393,7 +390,6 @@ impl SerialManager {
                             };
 
                             let log_entry = LogEntry {
-                                id: None,
                                 timestamp: Utc::now(),
                                 direction: Direction::Received,
                                 data: accumulated_data.clone(),
@@ -507,7 +503,6 @@ impl SerialManager {
 
             // Add to logs
             self.add_log(LogEntry {
-                id: None,
                 timestamp: Utc::now(),
                 direction: Direction::Sent,
                 data,

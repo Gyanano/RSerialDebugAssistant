@@ -1,0 +1,69 @@
+name: CI
+
+# PR-level safety net. Runs the Rust test suite and a frontend type-check + build.
+# Release packaging stays in release.yml (tag pushes only).
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust test
+    # macOS matches the release runner and needs no extra system packages for Tauri.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # tauri::generate_context! requires frontendDist to exist at compile time.
+      - name: Create frontend dist placeholder
+        run: |
+          mkdir -p frontend/dist
+          echo '<!doctype html><title>ci placeholder</title>' > frontend/dist/index.html
+
+      - name: Run tests
+        working-directory: src-tauri
+        run: cargo test
+
+  frontend:
+    name: Frontend typecheck + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Type-check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Clock, Settings2 } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { ConnectionStatus, SerialConfig } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
@@ -13,14 +13,6 @@ interface StatusBarProps {
 const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, config }) => {
   const { colors } = useTheme();
   const { t } = useTranslation();
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-  };
 
   const formatConnectionTime = (timestamp: string | null) => {
     if (!timestamp) return t('statusBar.notConnected');
