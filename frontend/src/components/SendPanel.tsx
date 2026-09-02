@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { Send, Shield, ChevronDown, ChevronUp, List, FileText } from 'lucide-react';
-import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding } from '../types';
+import { Send, Shield, ChevronDown, ChevronUp, List, FileText, AlertTriangle } from 'lucide-react';
+import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, SerialConfig } from '../types';
 import QuickCommandPanel from './QuickCommandPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
@@ -51,6 +51,7 @@ interface SendPanelProps {
   onFormatChange: (format: DataFormat) => void;
   onSend: () => void;
   isConnected: boolean;
+  config: SerialConfig;
   checksumConfig: ChecksumConfig;
   onChecksumConfigChange: (config: ChecksumConfig) => void;
   // Quick Command props
@@ -71,6 +72,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
   onFormatChange,
   onSend,
   isConnected,
+  config,
   checksumConfig,
   onChecksumConfigChange,
   quickCommandLists,
@@ -91,6 +93,29 @@ const SendPanel: React.FC<SendPanelProps> = ({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isChecksumExpanded, setIsChecksumExpanded] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+
+  // Line capacity in bytes/s: 1 start bit + data bits + optional parity bit
+  // + stop bits per byte on the wire.
+  const lineCapacityBps = useMemo(() => {
+    const dataBits = { Five: 5, Six: 6, Seven: 7, Eight: 8 }[config.data_bits];
+    const parityBit = config.parity === 'None' ? 0 : 1;
+    const stopBits = { One: 1, OnePointFive: 1.5, Two: 2 }[config.stop_bits];
+    return config.baud_rate / (1 + dataBits + parityBit + stopBits);
+  }, [config]);
+
+  // Payload per scheduled send in bytes (UTF-8 approximation in Text mode;
+  // this is a guard rail, not an exact meter).
+  const payloadBytes = useMemo(() => {
+    const base = format === 'Hex'
+      ? value.replace(/\s/g, '').length / 2
+      : new TextEncoder().encode(value).length;
+    return base + getChecksumLength(checksumConfig.type);
+  }, [value, format, checksumConfig.type]);
+
+  const requiredRateBps = (payloadBytes * 1000) / scheduledInterval;
+  const showRateWarning = isScheduledEnabled && payloadBytes > 0 && requiredRateBps > lineCapacityBps * 0.9;
+  const formatRate = (bps: number) =>
+    bps >= 1024 ? `${(bps / 1024).toFixed(1)} KB/s` : `${Math.round(bps)} B/s`;
 
   // Calculate disabled state for normal mode (depends on both connection AND content)
   const isNormalSendDisabled = !isConnected || !value.trim() || isScheduledEnabled || isConverting;
@@ -576,6 +601,18 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Rate guard: scheduled sending faster than the line can carry */}
+            {showRateWarning && (
+              <div className="mt-2 flex items-center space-x-1.5 flex-shrink-0">
+                <AlertTriangle size={13} style={{ color: '#f59e0b' }} className="flex-shrink-0" />
+                <span className="text-xs" style={{ color: '#f59e0b' }}>
+                  {t('sendPanel.rateExceeded')
+                    .replace('{rate}', formatRate(requiredRateBps))
+                    .replace('{capacity}', formatRate(lineCapacityBps))}
+                </span>
+              </div>
+            )}
 
             {/* Quick Insert Row (Hex mode only) */}
             {format === 'Hex' && (

@@ -89,6 +89,7 @@
     "stopScheduled": "Stop scheduled sending",
     "startScheduled": "Start scheduled sending",
     "intervalTitle": "Send interval in milliseconds",
+    "rateExceeded": "Send rate ~{rate} exceeds line capacity {capacity} — sends will keep timing out",
     "characters": "Characters",
     "bytes": "Bytes",
     "quickInsert": "Quick Insert",

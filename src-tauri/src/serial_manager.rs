@@ -84,6 +84,12 @@ impl PortOpener for SystemPortOpener {
     }
 }
 
+/// Write-side timeout (POSIX only, see `connect`). Much longer than the
+/// 50 ms read timeout so large or bursty payloads tolerate a full kernel TX
+/// buffer draining at line rate instead of failing spuriously.
+#[cfg(unix)]
+const WRITE_TIMEOUT_MS: u64 = 1000;
+
 impl SerialManager {
     pub fn new() -> Self {
         // Default log directory - will be overridden by frontend settings
@@ -170,7 +176,10 @@ impl SerialManager {
             self.disconnect()?;
         }
 
-        let port = self.port_opener.open(port_name, &config)?;
+        // `mut` is only exercised by the POSIX write-timeout tweak below;
+        // Windows shares timeouts across cloned handles and leaves it alone.
+        #[allow(unused_mut)]
+        let mut port = self.port_opener.open(port_name, &config)?;
         info!("Successfully opened serial port: {}", port_name);
 
         // Reset and start reading thread
@@ -186,6 +195,15 @@ impl SerialManager {
         let port_name_clone = port_name.to_string();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
         let mut read_port = port.try_clone()?;
+
+        // Give the write side a longer timeout than the read-friendly 50 ms.
+        // On POSIX the timeout lives on each handle, so this does not slow
+        // the read loop; on Windows cloned handles share COMMTIMEOUTS, so we
+        // leave the write side at the builder's value there.
+        #[cfg(unix)]
+        if let Err(e) = port.set_timeout(Duration::from_millis(WRITE_TIMEOUT_MS)) {
+            warn!("Failed to set write timeout on {}: {}", port_name, e);
+        }
 
         thread::spawn(move || {
             let mut read_buffer = [0u8; 1024];

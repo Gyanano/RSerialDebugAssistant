@@ -855,6 +855,7 @@ function App() {
               onFormatChange={setSendFormat}
               onSend={handleSendData}
               isConnected={connectionStatus.is_connected}
+              config={config}
               checksumConfig={checksumConfig}
               onChecksumConfigChange={setChecksumConfig}
               quickCommandLists={quickCommandLists}
