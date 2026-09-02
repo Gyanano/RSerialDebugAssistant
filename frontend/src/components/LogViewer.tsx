@@ -499,7 +499,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
   const sentCount = logs.filter(log => log.direction === 'Sent').length;
   const receivedCount = logs.filter(log => log.direction === 'Received').length;
-  const totalBytes = logs.reduce((acc, log) => acc + log.data.length, 0);
+  const totalBytes = logs.reduce((acc, log) => acc + (log.byte_len ?? log.data.length), 0);
 
   return (
     <div className="flex flex-col h-full">

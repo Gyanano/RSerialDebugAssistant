@@ -135,6 +135,7 @@ export function useSerialLogs(enabled: boolean) {
           timestamp_formatted: f.timestamp_formatted ?? undefined,
           seq: f.seq,
           session: f.session,
+          byte_len: f.len,
         });
         lastSeqRef.current = f.seq;
       }
