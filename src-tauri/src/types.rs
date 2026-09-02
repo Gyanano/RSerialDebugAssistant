@@ -109,6 +109,10 @@ pub struct ConnectionStatus {
     pub bytes_sent: u64,
     pub bytes_received: u64,
     pub connection_time: Option<DateTime<Utc>>,
+    /// Fatal read error that ended the connection unexpectedly (RFC #3
+    /// Step 3). `None` for normal connects/disconnects; cleared on connect.
+    #[serde(default)]
+    pub connection_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

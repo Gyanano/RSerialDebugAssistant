@@ -115,8 +115,20 @@ impl FrameSegmenter {
     }
 
     /// Bytes currently pending (received but not yet framed).
+    #[cfg(test)]
     pub fn pending(&self) -> &[u8] {
         &self.buffer
+    }
+
+    /// Drain any buffered bytes as a final frame regardless of idle time.
+    /// Used when the reader is shutting down or dying so the tail of the
+    /// stream is not silently dropped (RFC #3 Step 3).
+    pub fn flush(&mut self) -> Option<Vec<u8>> {
+        if self.buffer.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.buffer))
+        }
     }
 }
 
@@ -338,5 +350,17 @@ mod tests {
         let frames = seg.feed(b"abcdefgh\n", t0);
         assert_eq!(frames, vec![b"abcdefgh".to_vec(), b"\n".to_vec()]);
         assert!(seg.pending().is_empty());
+    }
+
+    #[test]
+    fn flush_drains_pending_regardless_of_idle() {
+        let t0 = Instant::now();
+        let mut seg = FrameSegmenter::new(combined(FrameDelimiter::LF), t0);
+        assert!(seg.flush().is_none());
+        let frames = seg.feed(b"abc", t0);
+        assert!(frames.is_empty());
+        assert_eq!(seg.flush(), Some(b"abc".to_vec()));
+        assert!(seg.pending().is_empty());
+        assert!(seg.flush().is_none());
     }
 }

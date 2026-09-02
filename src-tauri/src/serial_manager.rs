@@ -34,6 +34,12 @@ pub struct SerialManager {
     display_settings: Arc<Mutex<DisplaySettings>>,
     // Port opening seam (system opener in production, scripted fake in tests)
     port_opener: Arc<dyn PortOpener>,
+    // Reader thread lifecycle (RFC #3 Step 3)
+    reader_handle: Option<thread::JoinHandle<()>>,
+    // Fatal read error written by the reader thread right before it dies
+    reader_error: Arc<Mutex<Option<String>>>,
+    // Surfaced via ConnectionStatus until the next connect
+    connection_error: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -117,6 +123,9 @@ impl SerialManager {
             timezone_offset_minutes: Arc::new(Mutex::new(0)),
             display_settings: Arc::new(Mutex::new(DisplaySettings::default())),
             port_opener: Arc::new(SystemPortOpener),
+            reader_handle: None,
+            reader_error: Arc::new(Mutex::new(None)),
+            connection_error: None,
         }
     }
 
@@ -173,8 +182,18 @@ impl SerialManager {
 
     pub fn connect(&mut self, port_name: &str, config: SerialConfig) -> Result<()> {
         if self.is_connected {
-            self.disconnect()?;
+            let handle = self.disconnect()?;
+            if let Some(h) = handle {
+                Self::join_reader_bounded(h);
+            }
         }
+        // Defensive: a reader that outlived a previous bounded join must be
+        // dead before the OS will let us reopen the same device (EBUSY race).
+        if let Some(h) = self.reader_handle.take() {
+            Self::join_reader_bounded(h);
+        }
+        *self.reader_error.lock().unwrap() = None;
+        self.connection_error = None;
 
         // `mut` is only exercised by the POSIX write-timeout tweak below;
         // Windows shares timeouts across cloned handles and leaves it alone.
@@ -194,6 +213,7 @@ impl SerialManager {
         let display_settings = Arc::clone(&self.display_settings);
         let port_name_clone = port_name.to_string();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
+        let reader_error = Arc::clone(&self.reader_error);
         let mut read_port = port.try_clone()?;
 
         // Give the write side a longer timeout than the read-friendly 50 ms.
@@ -205,7 +225,7 @@ impl SerialManager {
             warn!("Failed to set write timeout on {}: {}", port_name, e);
         }
 
-        thread::spawn(move || {
+        let reader_handle = thread::spawn(move || {
             let mut read_buffer = [0u8; 1024];
             let initial_config = frame_segmentation_config.lock()
                 .map(|guard| guard.clone())
@@ -305,12 +325,24 @@ impl SerialManager {
                     }
                     Err(e) => {
                         error!("Error reading from serial port: {}", e);
+                        *reader_error.lock().unwrap() = Some(format!("{}", e));
                         break;
                     }
                 }
             }
+
+            // Salvage the pending partial frame on ANY exit (shutdown flag or
+            // fatal error) so the tail of the stream is not silently dropped
+            // (RFC #3 Step 3).
+            if let Some(frame) = segmenter.flush() {
+                let disp_settings = display_settings.lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
+                emit_frame(frame, &disp_settings);
+            }
         });
 
+        self.reader_handle = Some(reader_handle);
         self.current_port = Some(port);
         self.config = Some(config);
         self.is_connected = true;
@@ -327,7 +359,10 @@ impl SerialManager {
         Ok(())
     }
 
-    pub fn disconnect(&mut self) -> Result<()> {
+    /// Disconnect. Returns the reader thread handle so the CALLER can join
+    /// it outside the big manager lock (RFC #3 Step 3) — see
+    /// `join_reader_bounded`. State cleanup here is fast and non-blocking.
+    pub fn disconnect(&mut self) -> Result<Option<thread::JoinHandle<()>>> {
         if self.is_connected {
             // Signal reading thread to stop
             self.shutdown_flag.store(true, Ordering::Relaxed);
@@ -335,13 +370,15 @@ impl SerialManager {
             // Stop all recordings before disconnecting
             self.stop_all_recordings();
 
-            // Close the port first to force the reading thread to exit
+            // Close the write handle; the reader's cloned fd closes when the
+            // thread exits.
             self.current_port = None;
 
-            // Wait longer for thread to properly clean up
-            thread::sleep(Duration::from_millis(200));
-
             self.is_connected = false;
+
+            // A manual disconnect supersedes any concurrent reader death:
+            // don't surface it as an unexpected loss afterwards.
+            *self.reader_error.lock().unwrap() = None;
 
             if let Some(port_name) = &self.port_name {
                 // Don't add disconnection log to reduce clutter
@@ -358,7 +395,27 @@ impl SerialManager {
 
             info!("Serial port disconnected");
         }
-        Ok(())
+        Ok(self.reader_handle.take())
+    }
+
+    /// Join a reader thread with a bounded wait. The reader wakes at least
+    /// every ~50 ms (port read timeout), so 500 ms is generous; if it still
+    /// has not exited we drop the handle (detaching the thread) rather than
+    /// block — the thread dies on its own once the shutdown flag is set and
+    /// the port fd is closed.
+    pub fn join_reader_bounded(handle: thread::JoinHandle<()>) {
+        let deadline = Instant::now() + Duration::from_millis(500);
+        loop {
+            if handle.is_finished() {
+                let _ = handle.join();
+                return;
+            }
+            if Instant::now() >= deadline {
+                warn!("Reader thread did not exit within 500ms; detaching");
+                return;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     pub fn send_data(&mut self, data: Vec<u8>) -> Result<()> {
@@ -405,13 +462,32 @@ impl SerialManager {
         }
     }
 
-    pub fn get_status(&self) -> ConnectionStatus {
+    /// Lazy reader-death detection (RFC #3 Step 3): the reader thread records
+    /// a fatal error in `reader_error` before dying; the next status poll
+    /// (frontend: every second) turns that into a visible disconnect.
+    pub fn get_status(&mut self) -> ConnectionStatus {
+        if self.is_connected {
+            let death = self.reader_error.lock().unwrap().clone();
+            if let Some(err) = death {
+                warn!("Reader thread died, marking connection lost: {}", err);
+                self.connection_error = Some(err);
+                self.is_connected = false;
+                // Free the write handle and harvest the (finished) reader so
+                // the device can be reopened immediately.
+                self.current_port = None;
+                self.stop_all_recordings();
+                if let Some(h) = self.reader_handle.take() {
+                    let _ = h.join();
+                }
+            }
+        }
+
         let (bytes_sent, bytes_received, connection_time) = if let Ok(stats_guard) = self.stats.lock() {
             (stats_guard.bytes_sent, stats_guard.bytes_received, stats_guard.connection_time)
         } else {
             (0, 0, None)
         };
-        
+
         ConnectionStatus {
             is_connected: self.is_connected,
             port_name: self.port_name.clone(),
@@ -419,6 +495,7 @@ impl SerialManager {
             bytes_sent,
             bytes_received,
             connection_time,
+            connection_error: self.connection_error.clone(),
         }
     }
 
@@ -1322,10 +1399,10 @@ mod tests {
     }
 
     #[test]
-    fn golden_reader_death_is_silent_today() {
-        // Pins the CURRENT (broken) behavior that RFC #3 Step 3 will fix:
-        // a fatal read error kills the thread silently — is_connected stays
-        // true and bytes pending in the accumulator are never framed.
+    fn reader_death_marks_connection_lost_and_salvages_pending() {
+        // RFC #3 Step 3: a fatal read error must surface — the next status
+        // poll reports disconnected with the error, and the pending partial
+        // frame is flushed instead of vanishing.
         let port = ScriptedPort::new(
             "SCRIPT",
             vec![ScriptEvent::Bytes(b"abc".to_vec()), ScriptEvent::Fail],
@@ -1337,8 +1414,34 @@ mod tests {
 
         // Give the thread time to hit Fail and break.
         thread::sleep(Duration::from_millis(200));
-        assert!(manager.get_status().is_connected); // the lie, pinned
-        assert!(manager.get_logs().is_empty()); // pending "abc" lost, pinned
+
+        let status = manager.get_status();
+        assert!(!status.is_connected);
+        assert_eq!(status.connection_error.as_deref(), Some("scripted failure"));
+        // Pending "abc" salvaged as a final frame on death.
+        assert_eq!(frame_bytes(&manager.get_logs()), vec![b"abc".to_vec()]);
+
+        // A manual disconnect afterwards is a clean no-op.
+        assert!(manager.disconnect().unwrap().is_none());
+        assert!(manager.get_status().connection_error.is_some()); // sticky until next connect
+    }
+
+    #[test]
+    fn disconnect_returns_joinable_handle_and_reconnect_is_immediate() {
+        // RFC #3 Step 3: disconnect hands the reader handle to the caller;
+        // a bounded join then guarantees the device is free for reopen.
+        let port = ScriptedPort::new("SCRIPT", vec![]);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        let handle = manager.disconnect().unwrap().expect("reader handle");
+        SerialManager::join_reader_bounded(handle);
+
+        // Immediate reconnect must succeed (no stale reader, no EBUSY).
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+        assert!(manager.get_status().is_connected);
+        assert!(manager.get_status().connection_error.is_none());
         manager.disconnect().unwrap();
     }
 

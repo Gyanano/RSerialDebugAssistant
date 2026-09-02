@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "RSerial Debug Assistant",
-    "subtitle": "Professional Tool"
+    "subtitle": "Professional Tool",
+    "connectionLost": "连接意外断开：{error}"
   },
   "sidebar": {
     "expandSidebar": "展开侧边栏",

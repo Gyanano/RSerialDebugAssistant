@@ -54,6 +54,7 @@ export interface ConnectionStatus {
   bytes_sent: number;
   bytes_received: number;
   connection_time: string | null;
+  connection_error?: string | null;
 }
 
 // Quick Command types

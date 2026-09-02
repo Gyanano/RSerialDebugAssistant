@@ -226,10 +226,13 @@ const SendPanel: React.FC<SendPanelProps> = ({
     };
   }, []);
 
-  // Cleanup when disconnected or value becomes empty
+  // Cleanup when disconnected or value becomes empty: scheduled sending no
+  // longer has its preconditions, so reset the switch too — otherwise the
+  // panel shows "scheduled active" with a dead timer underneath.
   useEffect(() => {
     if (!isConnected || !value.trim()) {
       stopScheduledSending();
+      setIsScheduledEnabled(false);
     }
   }, [isConnected, value]);
 
