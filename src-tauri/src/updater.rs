@@ -296,6 +296,33 @@ pub fn launch_installer_and_exit(installer_path: &str) -> Result<(), String> {
     std::process::exit(0);
 }
 
+/// Open a URL in the system browser (release notes, project page, …).
+///
+/// Plain `<a target="_blank">` is a no-op inside the Tauri webview, so the
+/// frontend hands external links here instead of using the shell plugin.
+pub fn open_url(url: &str) -> Result<(), String> {
+    // Cheap sanity check: only web URLs may be handed to the OS opener.
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(format!("Refusing to open non-http(s) URL: {}", url));
+    }
+
+    let status = if cfg!(target_os = "macos") {
+        Command::new("open").arg(url).status()
+    } else if cfg!(target_os = "windows") {
+        Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .status()
+    } else {
+        Command::new("xdg-open").arg(url).status()
+    };
+
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("System URL opener exited with {}", s)),
+        Err(e) => Err(format!("Failed to launch URL opener: {}", e)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,6 +342,13 @@ mod tests {
         assert_eq!(compare_versions("1.2.0", "1.2.0"), Some(Ordering::Equal));
         assert_eq!(compare_versions("1.2.0", "1.3.0"), Some(Ordering::Less));
         assert_eq!(compare_versions("2.0.0", "1.9.9"), Some(Ordering::Greater));
+    }
+
+    #[test]
+    fn open_url_rejects_non_http_schemes() {
+        assert!(open_url("file:///etc/passwd").is_err());
+        assert!(open_url("javascript:alert(1)").is_err());
+        assert!(open_url("").is_err());
     }
 
     fn asset(name: &str) -> GitHubAsset {
