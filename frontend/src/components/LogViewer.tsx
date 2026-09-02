@@ -27,7 +27,7 @@ const STORAGE_KEY_SHOW_LINE_NUMBERS = 'serialDebug_showLineNumbers';
 const SCROLL_BOTTOM_THRESHOLD = 50;
 
 const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
-  enabled: true,
+  enabled: false,
   convertLF: true,
   convertCR: true,
   convertTab: true,
@@ -664,7 +664,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
           <div className="space-y-0.5">
             {logs.map((log, index) => (
               <div
-                key={index}
+                key={log.gap_key ?? (log.seq ? `${log.session}-${log.seq}` : index)}
                 ref={(el) => { logEntryRefs.current[index] = el; }}
                 className="py-1 px-2 rounded-[4px] transition-colors duration-150"
                 style={{

@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "RSerial Debug Assistant",
-    "subtitle": "Professional Tool"
+    "subtitle": "Professional Tool",
+    "connectionLost": "连接意外断开：{error}"
   },
   "sidebar": {
     "expandSidebar": "展开侧边栏",
@@ -76,7 +77,8 @@
     "tx": "发送",
     "rx": "接收",
     "total": "总计",
-    "bytes": "字节"
+    "bytes": "字节",
+    "framesDropped": "⋯ 丢失 {n} 帧（通道过载） ⋯"
   },
   "sendPanel": {
     "payload": "发送数据",
@@ -89,6 +91,7 @@
     "stopScheduled": "停止定时发送",
     "startScheduled": "开始定时发送",
     "intervalTitle": "发送间隔（毫秒）",
+    "rateExceeded": "发送速率约 {rate}，超过线路容量 {capacity}，将持续超时",
     "characters": "字符数",
     "bytes": "字节数",
     "quickInsert": "快速插入",

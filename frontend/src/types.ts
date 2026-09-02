@@ -36,7 +36,6 @@ export interface ChecksumConfig {
 }
 
 export interface LogEntry {
-  id?: number;
   timestamp: string;
   direction: Direction;
   data: number[];
@@ -46,6 +45,12 @@ export interface LogEntry {
   display_text: string;
   /** Pre-formatted timestamp string (undefined if timestamps were disabled when entry was created) */
   timestamp_formatted?: string;
+  /** Session-scoped sequence number (RFC #3 Step 4); 0/undefined for legacy entries */
+  seq?: number;
+  /** Owning session id */
+  session?: number;
+  /** Frontend-only marker for synthesized "frames dropped" placeholder rows */
+  gap_key?: string;
 }
 
 export interface ConnectionStatus {
@@ -55,6 +60,7 @@ export interface ConnectionStatus {
   bytes_sent: number;
   bytes_received: number;
   connection_time: string | null;
+  connection_error?: string | null;
 }
 
 // Quick Command types

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { Send, Shield, ChevronDown, ChevronUp, List, FileText } from 'lucide-react';
-import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding } from '../types';
+import { Send, Shield, ChevronDown, ChevronUp, List, FileText, AlertTriangle } from 'lucide-react';
+import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, SerialConfig } from '../types';
 import QuickCommandPanel from './QuickCommandPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
@@ -28,7 +28,7 @@ export const SEND_PANEL_MIN_HEIGHTS = {
 };
 
 // Format hex input: filter non-hex chars, add spaces every 2 chars
-const formatHexInput = (input: string, previousValue: string): string => {
+const formatHexInput = (input: string): string => {
   // Remove all spaces first
   const withoutSpaces = input.replace(/\s/g, '');
 
@@ -51,6 +51,7 @@ interface SendPanelProps {
   onFormatChange: (format: DataFormat) => void;
   onSend: () => void;
   isConnected: boolean;
+  config: SerialConfig;
   checksumConfig: ChecksumConfig;
   onChecksumConfigChange: (config: ChecksumConfig) => void;
   // Quick Command props
@@ -71,6 +72,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
   onFormatChange,
   onSend,
   isConnected,
+  config,
   checksumConfig,
   onChecksumConfigChange,
   quickCommandLists,
@@ -87,10 +89,37 @@ const SendPanel: React.FC<SendPanelProps> = ({
   const [sendMode, setSendMode] = useState<SendMode>('normal');
   const [isScheduledEnabled, setIsScheduledEnabled] = useState(false);
   const [scheduledInterval, setScheduledInterval] = useState(1000);
+  // Draft string while the interval input is being edited: typing is never
+  // clamped mid-edit; the value commits (clamped) on blur/Enter, Escape
+  // cancels. Prevents "5" snapping to the minimum while typing "50".
+  const [intervalDraft, setIntervalDraft] = useState<string | null>(null);
   const [isScheduledRunning, setIsScheduledRunning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isChecksumExpanded, setIsChecksumExpanded] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+
+  // Line capacity in bytes/s: 1 start bit + data bits + optional parity bit
+  // + stop bits per byte on the wire.
+  const lineCapacityBps = useMemo(() => {
+    const dataBits = { Five: 5, Six: 6, Seven: 7, Eight: 8 }[config.data_bits];
+    const parityBit = config.parity === 'None' ? 0 : 1;
+    const stopBits = { One: 1, OnePointFive: 1.5, Two: 2 }[config.stop_bits];
+    return config.baud_rate / (1 + dataBits + parityBit + stopBits);
+  }, [config]);
+
+  // Payload per scheduled send in bytes (UTF-8 approximation in Text mode;
+  // this is a guard rail, not an exact meter).
+  const payloadBytes = useMemo(() => {
+    const base = format === 'Hex'
+      ? value.replace(/\s/g, '').length / 2
+      : new TextEncoder().encode(value).length;
+    return base + getChecksumLength(checksumConfig.type);
+  }, [value, format, checksumConfig.type]);
+
+  const requiredRateBps = (payloadBytes * 1000) / scheduledInterval;
+  const showRateWarning = isScheduledEnabled && payloadBytes > 0 && requiredRateBps > lineCapacityBps * 0.9;
+  const formatRate = (bps: number) =>
+    bps >= 1024 ? `${(bps / 1024).toFixed(1)} KB/s` : `${Math.round(bps)} B/s`;
 
   // Calculate disabled state for normal mode (depends on both connection AND content)
   const isNormalSendDisabled = !isConnected || !value.trim() || isScheduledEnabled || isConverting;
@@ -145,7 +174,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
     if (format === 'Hex') {
       // Format and validate hex input
-      const formattedHex = formatHexInput(newValue, value);
+      const formattedHex = formatHexInput(newValue);
       onChange(formattedHex);
     } else {
       // Text mode: no restrictions
@@ -164,9 +193,20 @@ const SendPanel: React.FC<SendPanelProps> = ({
     }
   };
 
-  const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newInterval = Math.max(100, parseInt(e.target.value) || 1000);
-    setScheduledInterval(newInterval);
+  // Interval bounds: 10ms floor (event-push RX path can keep up now),
+  // 60s ceiling, 1s fallback for empty/invalid drafts.
+  const MIN_INTERVAL_MS = 10;
+  const MAX_INTERVAL_MS = 60000;
+
+  const commitIntervalDraft = () => {
+    if (intervalDraft === null) return;
+    const parsed = parseInt(intervalDraft, 10);
+    const next = Number.isNaN(parsed)
+      ? scheduledInterval
+      : Math.min(MAX_INTERVAL_MS, Math.max(MIN_INTERVAL_MS, parsed));
+    setIntervalDraft(null);
+    if (next === scheduledInterval) return;
+    setScheduledInterval(next);
 
     // Restart interval with new timing if already running
     if (isScheduledRunning) {
@@ -174,6 +214,8 @@ const SendPanel: React.FC<SendPanelProps> = ({
       setTimeout(() => startScheduledSending(), 0);
     }
   };
+
+  const cancelIntervalDraft = () => setIntervalDraft(null);
 
   const startScheduledSending = () => {
     if (!value.trim() || !isConnected) return;
@@ -201,10 +243,13 @@ const SendPanel: React.FC<SendPanelProps> = ({
     };
   }, []);
 
-  // Cleanup when disconnected or value becomes empty
+  // Cleanup when disconnected or value becomes empty: scheduled sending no
+  // longer has its preconditions, so reset the switch too — otherwise the
+  // panel shows "scheduled active" with a dead timer underneath.
   useEffect(() => {
     if (!isConnected || !value.trim()) {
       stopScheduledSending();
+      setIsScheduledEnabled(false);
     }
   }, [isConnected, value]);
 
@@ -559,12 +604,18 @@ const SendPanel: React.FC<SendPanelProps> = ({
                       <TooltipTrigger asChild>
                         <Input
                           type="number"
-                          value={scheduledInterval}
-                          onChange={handleIntervalChange}
+                          value={intervalDraft ?? String(scheduledInterval)}
+                          onFocus={() => setIntervalDraft(String(scheduledInterval))}
+                          onChange={(e) => setIntervalDraft(e.target.value.replace(/[^0-9]/g, ''))}
+                          onBlur={commitIntervalDraft}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitIntervalDraft();
+                            if (e.key === 'Escape') cancelIntervalDraft();
+                          }}
                           className="w-full h-7 text-xs text-right"
-                          min={100}
-                          max={60000}
-                          step={100}
+                          min={MIN_INTERVAL_MS}
+                          max={MAX_INTERVAL_MS}
+                          step={10}
                           disabled={!isConnected || isScheduledRunning}
                         />
                       </TooltipTrigger>
@@ -576,6 +627,18 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Rate guard: scheduled sending faster than the line can carry */}
+            {showRateWarning && (
+              <div className="mt-2 flex items-center space-x-1.5 flex-shrink-0">
+                <AlertTriangle size={13} style={{ color: '#f59e0b' }} className="flex-shrink-0" />
+                <span className="text-xs" style={{ color: '#f59e0b' }}>
+                  {t('sendPanel.rateExceeded')
+                    .replace('{rate}', formatRate(requiredRateBps))
+                    .replace('{capacity}', formatRate(lineCapacityBps))}
+                </span>
+              </div>
+            )}
 
             {/* Quick Insert Row (Hex mode only) */}
             {format === 'Hex' && (

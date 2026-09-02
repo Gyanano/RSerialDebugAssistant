@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Gate for the dual-platform release workflow.
 # All three must pass:
-#   1. The tagged commit is on origin/release
+#   1. The tagged commit is on the production branch (origin/main)
 #   2. version.json changed vs the previous version tag
 #   3. The pushed ref is a version tag that matches version.json
 set -euo pipefail
+
+# Production branch; override via env if the repo ever renames it again.
+PROD_BRANCH="${RELEASE_GATE_PROD_BRANCH:-main}"
 
 fail() {
   echo "::error::$1"
@@ -34,15 +37,15 @@ fi
 
 echo "Condition 3 passed: tag $TAG_REF matches version.json $VERSION"
 
-if ! git fetch origin refs/heads/release:refs/remotes/origin/release; then
-  fail "Condition 1 failed: origin/release does not exist. Create it (see .github/BRANCHING.md)"
+if ! git fetch origin "refs/heads/${PROD_BRANCH}:refs/remotes/origin/${PROD_BRANCH}"; then
+  fail "Condition 1 failed: origin/${PROD_BRANCH} does not exist. Create it (see .github/BRANCHING.md)"
 fi
 
-if ! git merge-base --is-ancestor "$SHA" origin/release; then
-  fail "Condition 1 failed: tagged commit $SHA is not on the release branch"
+if ! git merge-base --is-ancestor "$SHA" "origin/${PROD_BRANCH}"; then
+  fail "Condition 1 failed: tagged commit $SHA is not on the ${PROD_BRANCH} branch"
 fi
 
-echo "Condition 1 passed: $SHA is on origin/release"
+echo "Condition 1 passed: $SHA is on origin/${PROD_BRANCH}"
 
 # Previous version tag (excluding the tag we just pushed)
 PREV_TAG="$(

@@ -10,6 +10,7 @@ import SettingsModal from './components/SettingsModal';
 import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, TextEncoding, FrameSegmentationConfig } from './types';
 import { useTheme } from './contexts/ThemeContext';
 import { useTranslation } from './i18n';
+import { useSerialLogs } from './hooks/useSerialLogs';
 import { appendChecksum } from './utils/checksum';
 import { loadTimezone, formatDateForFilename, getSystemTimezoneOffset, parseUtcOffset } from './utils/timezone';
 import { Toaster } from './components/ui/sonner';
@@ -135,7 +136,12 @@ function App() {
     bytes_received: 0,
     connection_time: null,
   });
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [polledLogs, setPolledLogs] = useState<LogEntry[]>([]);
+  // RFC #3 Step 4: event push is the default log path; set
+  // localStorage 'serialEventPush' = '0' to roll back to 100ms polling.
+  const [eventPush] = useState(() => localStorage.getItem('serialEventPush') !== '0');
+  const { logs: pushedLogs, clearLogs: clearPushedLogs } = useSerialLogs(eventPush);
+  const logs = eventPush ? pushedLogs : polledLogs;
   const [sendText, setSendText] = useState('');
   const [sendFormat, setSendFormat] = useState<DataFormat>('Text');
   const [checksumConfig, setChecksumConfig] = useState<ChecksumConfig>({
@@ -417,15 +423,17 @@ function App() {
 
     // Set up intervals for updating status, logs, and ports
     const statusInterval = setInterval(updateStatus, 1000);
-    const logsInterval = setInterval(updateLogs, 100); // More frequent log updates
+    // Event push (RFC #3 Step 4) replaces the 100ms full-clone log polling;
+    // the polling interval only runs in rollback mode.
+    const logsInterval = eventPush ? null : setInterval(updateLogs, 100);
     const portsInterval = setInterval(loadPorts, 3000); // Check for new ports every 3 seconds
 
     return () => {
       clearInterval(statusInterval);
-      clearInterval(logsInterval);
+      if (logsInterval !== null) clearInterval(logsInterval);
       clearInterval(portsInterval);
     };
-  }, [loadPorts]); // 依赖loadPorts函数
+  }, [loadPorts, eventPush]); // 依赖loadPorts函数
 
   const handlePortSelect = (port: string) => {
     setSelectedPort(port);
@@ -435,7 +443,14 @@ function App() {
   const updateStatus = async () => {
     try {
       const status = await invoke<ConnectionStatus>('get_connection_status');
-      setConnectionStatus(status);
+      // Surface an unexpected loss (fatal read error, e.g. cable unplugged)
+      // exactly once per transition; manual disconnects carry no error.
+      setConnectionStatus((prev) => {
+        if (prev.is_connected && !status.is_connected && status.connection_error) {
+          toast.error(t('app.connectionLost').replace('{error}', status.connection_error));
+        }
+        return status;
+      });
     } catch (error) {
       console.error('Failed to get status:', error);
     }
@@ -444,7 +459,7 @@ function App() {
   const updateLogs = async () => {
     try {
       const newLogs = await invoke<LogEntry[]>('get_logs');
-      setLogs(newLogs);
+      setPolledLogs(newLogs);
     } catch (error) {
       console.error('Failed to get logs:', error);
     }
@@ -545,9 +560,13 @@ function App() {
   };
 
   const handleClearLogs = async () => {
+    if (eventPush) {
+      await clearPushedLogs();
+      return;
+    }
     try {
       await invoke('clear_logs');
-      setLogs([]);
+      setPolledLogs([]);
     } catch (error) {
       console.error('Failed to clear logs:', error);
     }
@@ -855,6 +874,7 @@ function App() {
               onFormatChange={setSendFormat}
               onSend={handleSendData}
               isConnected={connectionStatus.is_connected}
+              config={config}
               checksumConfig={checksumConfig}
               onChecksumConfigChange={setChecksumConfig}
               quickCommandLists={quickCommandLists}

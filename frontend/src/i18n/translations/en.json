@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "RSerial Debug Assistant",
-    "subtitle": "Professional Tool"
+    "subtitle": "Professional Tool",
+    "connectionLost": "Connection lost: {error}"
   },
   "sidebar": {
     "expandSidebar": "Expand Sidebar",
@@ -76,7 +77,8 @@
     "tx": "TX",
     "rx": "RX",
     "total": "Total",
-    "bytes": "Bytes"
+    "bytes": "Bytes",
+    "framesDropped": "⋯ dropped {n} frames (channel overloaded) ⋯"
   },
   "sendPanel": {
     "payload": "Payload",
@@ -89,6 +91,7 @@
     "stopScheduled": "Stop scheduled sending",
     "startScheduled": "Start scheduled sending",
     "intervalTitle": "Send interval in milliseconds",
+    "rateExceeded": "Send rate ~{rate} exceeds line capacity {capacity} — sends will keep timing out",
     "characters": "Characters",
     "bytes": "Bytes",
     "quickInsert": "Quick Insert",

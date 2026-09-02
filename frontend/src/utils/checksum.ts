@@ -48,7 +48,6 @@ export function calculateCRC8(data: Uint8Array): number[] {
  * Returns 2 bytes in little-endian order (low byte first)
  */
 export function calculateCRC16(data: Uint8Array): number[] {
-  const polynomial = 0x8005;
   let crc = 0xFFFF;
 
   for (let i = 0; i < data.length; i++) {
