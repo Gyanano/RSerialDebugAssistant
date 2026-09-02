@@ -77,7 +77,8 @@
     "tx": "TX",
     "rx": "RX",
     "total": "Total",
-    "bytes": "Bytes"
+    "bytes": "Bytes",
+    "framesDropped": "⋯ dropped {n} frames (channel overloaded) ⋯"
   },
   "sendPanel": {
     "payload": "Payload",

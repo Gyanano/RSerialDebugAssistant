@@ -664,7 +664,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
           <div className="space-y-0.5">
             {logs.map((log, index) => (
               <div
-                key={index}
+                key={log.gap_key ?? (log.seq ? `${log.session}-${log.seq}` : index)}
                 ref={(el) => { logEntryRefs.current[index] = el; }}
                 className="py-1 px-2 rounded-[4px] transition-colors duration-150"
                 style={{
