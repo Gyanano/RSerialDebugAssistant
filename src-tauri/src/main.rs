@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use tauri::State;
 
 mod serial_manager;
+mod bus;
 mod framing;
 mod types;
 mod updater;
@@ -13,6 +14,79 @@ mod updater;
 use serial_manager::SerialManager;
 use types::*;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+// ── RFC #3 Step 4: event push bridge ─────────────────────────────────
+/// Wire DTO for `serial://frames`: the hot path carries no raw bytes
+/// (seq/dir/len + decorated display text); raw bytes remain available via
+/// the snapshot command and export.
+#[derive(Clone, serde::Serialize)]
+struct FrameDto {
+    session: u64,
+    seq: u64,
+    direction: Direction,
+    len: usize,
+    timestamp: chrono::DateTime<chrono::Utc>,
+    display_text: String,
+    timestamp_formatted: Option<String>,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct FrameBatchDto {
+    session: u64,
+    first_seq: u64,
+    dropped_before: u64,
+    frames: Vec<FrameDto>,
+}
+
+/// Bridge contract: a plain pump thread with bounded blocking recv; the
+/// subscription lives for the app's lifetime (sessions come and go).
+fn spawn_frame_pump(app: &tauri::App) {
+    use tauri::{Emitter, Manager};
+    let app_handle = app.handle().clone();
+    let state = app.state::<AppState>();
+    let (bus, disp, tz) = {
+        let manager = state.serial_manager.lock().unwrap();
+        (
+            manager.bus(),
+            manager.display_settings_handle(),
+            manager.timezone_offset_handle(),
+        )
+    };
+    std::thread::spawn(move || {
+        let sub = bus.subscribe(bus::GUI_DEFAULT);
+        loop {
+            let Some(batch) = sub.recv_batch() else {
+                continue; // quiet timeout tick
+            };
+            let settings = disp.lock().map(|g| g.clone()).unwrap_or_default();
+            let tz_offset = *tz.lock().unwrap_or_else(|e| e.into_inner());
+            let frames: Vec<FrameDto> = batch
+                .frames
+                .iter()
+                .map(|f| FrameDto {
+                    session: f.session,
+                    seq: f.seq,
+                    direction: f.dir,
+                    len: f.data.len(),
+                    timestamp: f.t_wall,
+                    display_text: serial_manager::format_data_for_display(&f.data, &settings),
+                    timestamp_formatted: if settings.show_timestamps {
+                        Some(serial_manager::format_timestamp_with_offset(tz_offset))
+                    } else {
+                        None
+                    },
+                })
+                .collect();
+            let dto = FrameBatchDto {
+                session: batch.session,
+                first_seq: batch.first_seq,
+                dropped_before: batch.dropped_before,
+                frames,
+            };
+            let _ = app_handle.emit("serial://frames", dto);
+        }
+    });
+}
 
 // Application state
 struct AppState {
@@ -125,11 +199,19 @@ async fn get_logs(state: State<'_, AppState>) -> Result<Vec<LogEntry>, String> {
     Ok(manager.get_logs())
 }
 
+/// Initial alignment for the event-driven log view (RFC #3 Step 4).
 #[tauri::command]
-async fn clear_logs(state: State<'_, AppState>) -> Result<(), String> {
+async fn get_logs_snapshot(state: State<'_, AppState>) -> Result<LogsSnapshot, String> {
+    let manager = state.serial_manager.lock().unwrap();
+    Ok(manager.get_logs_snapshot())
+}
+
+/// Returns the new log epoch; the frontend uses it to discard snapshots
+/// that raced this clear.
+#[tauri::command]
+async fn clear_logs(state: State<'_, AppState>) -> Result<u64, String> {
     let mut manager = state.serial_manager.lock().unwrap();
-    manager.clear_logs();
-    Ok(())
+    Ok(manager.clear_logs())
 }
 
 #[tauri::command]
@@ -360,6 +442,10 @@ fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            spawn_frame_pump(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_serial_ports,
             connect_to_port,
@@ -367,6 +453,7 @@ fn main() {
             send_data,
             get_connection_status,
             get_logs,
+            get_logs_snapshot,
             clear_logs,
             export_logs,
             save_session,

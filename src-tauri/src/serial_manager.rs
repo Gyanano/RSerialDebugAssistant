@@ -40,6 +40,12 @@ pub struct SerialManager {
     reader_error: Arc<Mutex<Option<String>>>,
     // Surfaced via ConnectionStatus until the next connect
     connection_error: Option<String>,
+    // Frame bus for event push (RFC #3 Step 4); read/send paths publish,
+    // the bridge pump thread consumes and emits `serial://frames`.
+    bus: Arc<crate::bus::FrameBus>,
+    // Bumped on every clear_logs; snapshots carry it to detect
+    // clear-during-snapshot resurrection.
+    log_epoch: u64,
 }
 
 #[derive(Debug, Default)]
@@ -126,6 +132,8 @@ impl SerialManager {
             reader_handle: None,
             reader_error: Arc::new(Mutex::new(None)),
             connection_error: None,
+            bus: Arc::new(crate::bus::FrameBus::new()),
+            log_epoch: 0,
         }
     }
 
@@ -201,6 +209,9 @@ impl SerialManager {
         let mut port = self.port_opener.open(port_name, &config)?;
         info!("Successfully opened serial port: {}", port_name);
 
+        // New session: seq restarts at 1 (RFC #3 Step 4).
+        self.bus.start_session();
+
         // Reset and start reading thread
         self.shutdown_flag.store(false, Ordering::Relaxed);
         let logs = Arc::clone(&self.logs);
@@ -214,6 +225,7 @@ impl SerialManager {
         let port_name_clone = port_name.to_string();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
         let reader_error = Arc::clone(&self.reader_error);
+        let bus = Arc::clone(&self.bus);
         let mut read_port = port.try_clone()?;
 
         // Give the write side a longer timeout than the read-friendly 50 ms.
@@ -233,7 +245,8 @@ impl SerialManager {
             let mut segmenter = FrameSegmenter::new(initial_config, Instant::now());
 
             // Single frame-emission path (replaces the four duplicated
-            // blocks): text recording -> display formatting -> log buffer -> stats.
+            // blocks): text recording -> display formatting -> log buffer
+            // -> stats -> bus publish (dual-write 存续期, RFC #3 Step 4).
             let emit_frame = |frame_data: Vec<u8>, disp_settings: &DisplaySettings| {
                 // Write to text recording file with timestamp and RX label
                 if let Ok(mut guard) = text_file.lock() {
@@ -244,6 +257,10 @@ impl SerialManager {
                         let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
                     }
                 }
+
+                // Allocate the bus frame first so the LogEntry carries the
+                // same seq/session the event subscribers see.
+                let frame = bus.alloc_frame(Direction::Received, frame_data.clone());
 
                 // Format display text and timestamp based on current settings
                 let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
@@ -263,6 +280,8 @@ impl SerialManager {
                     port_name: port_name_clone.clone(),
                     display_text,
                     timestamp_formatted,
+                    seq: frame.seq,
+                    session: frame.session,
                 };
 
                 if let Ok(mut logs_guard) = logs.lock() {
@@ -276,6 +295,11 @@ impl SerialManager {
                 if let Ok(mut stats_guard) = stats.lock() {
                     stats_guard.bytes_received += data_len;
                 }
+
+                // Event fan-out comes last: the buffer write must land first
+                // so a snapshot racing this batch never misses the entry
+                // (subscribers dedupe by seq anyway).
+                bus.publish(&frame);
             };
 
             loop {
@@ -435,6 +459,10 @@ impl SerialManager {
                 stats_guard.bytes_sent += data.len() as u64;
             }
 
+            // TX shares the session's single seq sequence (transcript
+            // interleaving preserved, RFC #3 Step 4).
+            let frame = self.bus.alloc_frame(Direction::Sent, data.clone());
+
             // Get current display settings for formatting
             let disp_settings = self.get_display_settings();
             let tz_offset = *self.timezone_offset_minutes.lock().unwrap_or_else(|e| e.into_inner());
@@ -454,7 +482,12 @@ impl SerialManager {
                 port_name: self.port_name.clone().unwrap_or_default(),
                 display_text,
                 timestamp_formatted,
+                seq: frame.seq,
+                session: frame.session,
             });
+
+            // Buffer-first, then fan out (see emit_frame).
+            self.bus.publish(&frame);
 
             Ok(())
         } else {
@@ -507,10 +540,38 @@ impl SerialManager {
         }
     }
 
-    pub fn clear_logs(&mut self) {
+    pub fn clear_logs(&mut self) -> u64 {
         if let Ok(mut logs) = self.logs.lock() {
             logs.clear();
         }
+        // Bump the epoch so any snapshot started before this clear is
+        // recognized as stale by the frontend (no resurrection).
+        self.log_epoch += 1;
+        self.log_epoch
+    }
+
+    /// Initial-alignment snapshot for the event-driven log view.
+    pub fn get_logs_snapshot(&self) -> LogsSnapshot {
+        LogsSnapshot {
+            epoch: self.log_epoch,
+            session: self.bus.current_session(),
+            entries: self.get_logs(),
+        }
+    }
+
+    /// Event bus handle for the bridge pump (RFC #3 Step 4).
+    pub fn bus(&self) -> Arc<crate::bus::FrameBus> {
+        Arc::clone(&self.bus)
+    }
+
+    /// Shared display settings, for the bridge pump's decoration pass.
+    pub fn display_settings_handle(&self) -> Arc<Mutex<DisplaySettings>> {
+        Arc::clone(&self.display_settings)
+    }
+
+    /// Shared timezone offset, for the bridge pump's decoration pass.
+    pub fn timezone_offset_handle(&self) -> Arc<Mutex<i32>> {
+        Arc::clone(&self.timezone_offset_minutes)
     }
 
     pub fn export_logs(&self, file_path: &str, format: ExportFormat, timezone_offset_minutes: i32) -> Result<()> {
@@ -857,7 +918,7 @@ impl SerialManager {
 }
 
 /// Format current UTC time with timezone offset applied
-fn format_timestamp_with_offset(offset_minutes: i32) -> String {
+pub(crate) fn format_timestamp_with_offset(offset_minutes: i32) -> String {
     use chrono::FixedOffset;
     let offset_seconds = offset_minutes * 60;
     let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
@@ -1021,7 +1082,7 @@ fn sort_usb_ports_first(mut ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
 }
 
 /// Format data based on display settings
-fn format_data_for_display(data: &[u8], settings: &DisplaySettings) -> String {
+pub(crate) fn format_data_for_display(data: &[u8], settings: &DisplaySettings) -> String {
     match settings.format {
         ReceiveDisplayFormat::Hex => format_bytes_as_hex(data),
         ReceiveDisplayFormat::Txt => format_bytes_as_text(data, &settings.encoding, &settings.special_char_config),
@@ -1427,8 +1488,36 @@ mod tests {
     }
 
     #[test]
-    fn disconnect_returns_joinable_handle_and_reconnect_is_immediate() {
-        // RFC #3 Step 3: disconnect hands the reader handle to the caller;
+    fn bus_events_carry_contiguous_seq_across_rx_and_tx() {
+        // RFC #3 Step 4 acceptance: frames reach subscribers with contiguous
+        // seqs, TX and RX sharing one sequence, no loss, no duplication.
+        let port = ScriptedPort::new("SCRIPT", vec![ScriptEvent::Bytes(b"hello".to_vec())]);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg_timeout());
+        let sub = manager.bus().subscribe(crate::bus::GUI_DEFAULT);
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        thread::sleep(Duration::from_millis(150)); // RX arrives + idle flush
+        manager.send_data(b"ping".to_vec()).unwrap();
+
+        let mut seen: Vec<(u64, Direction)> = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && seen.len() < 2 {
+            if let Some(batch) = sub.recv_batch() {
+                seen.extend(batch.frames.iter().map(|f| (f.seq, f.dir)));
+            }
+        }
+        manager.disconnect().unwrap();
+
+        assert_eq!(
+            seen,
+            vec![(1, Direction::Received), (2, Direction::Sent)]
+        );
+    }
+
+    #[test]
+    fn disconnect_returns_joinable_handle_and_reconnect_is_immediate() {        // RFC #3 Step 3: disconnect hands the reader handle to the caller;
         // a bounded join then guarantees the device is free for reopen.
         let port = ScriptedPort::new("SCRIPT", vec![]);
         let mut manager = SerialManager::new()

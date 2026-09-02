@@ -77,7 +77,8 @@
     "tx": "发送",
     "rx": "接收",
     "total": "总计",
-    "bytes": "字节"
+    "bytes": "字节",
+    "framesDropped": "⋯ 丢失 {n} 帧（通道过载） ⋯"
   },
   "sendPanel": {
     "payload": "发送数据",

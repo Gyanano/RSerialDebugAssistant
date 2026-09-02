@@ -93,6 +93,23 @@ pub struct LogEntry {
     pub display_text: String,
     /// Pre-formatted timestamp string (None if timestamps were disabled when entry was created)
     pub timestamp_formatted: Option<String>,
+    /// Session-scoped sequence number, strictly increasing from 1 per
+    /// session, TX and RX sharing one sequence (RFC #3 Step 4).
+    #[serde(default)]
+    pub seq: u64,
+    /// Session this entry belongs to (0 = pre-event-model legacy entries).
+    #[serde(default)]
+    pub session: u64,
+}
+
+/// Initial-alignment snapshot for the event-driven log view (RFC #3 Step 4).
+/// `epoch` guards against clear-during-snapshot resurrection: a snapshot
+/// taken before a `clear_logs` carries a stale epoch and must be discarded.
+#[derive(Debug, Clone, Serialize)]
+pub struct LogsSnapshot {
+    pub epoch: u64,
+    pub session: u64,
+    pub entries: Vec<LogEntry>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
