@@ -49,6 +49,9 @@ export interface LogEntry {
   seq?: number;
   /** Owning session id */
   session?: number;
+  /** Byte length carried by event-sourced entries (whose `data` is empty by
+   *  design, RFC #3 Step 4); undefined for snapshot entries with real data */
+  byte_len?: number;
   /** Frontend-only marker for synthesized "frames dropped" placeholder rows */
   gap_key?: string;
 }
