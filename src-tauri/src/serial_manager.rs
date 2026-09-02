@@ -331,6 +331,17 @@ impl SerialManager {
                             }
                         }
 
+                        // A read that returns fresh bytes may have blocked
+                        // through an idle gap LONGER than the segmentation
+                        // timeout without ever surfacing TimedOut (e.g. a
+                        // 28 ms gap at high duty cycle vs the 50 ms read
+                        // timeout — Issue #9). Close the pending frame on
+                        // the observed gap BEFORE feeding, so timeout
+                        // semantics hold regardless of read granularity.
+                        if let Some(frame) = segmenter.flush_if_idle(Instant::now()) {
+                            emit_frame(frame, &disp_settings);
+                        }
+
                         for frame in segmenter.feed(received_bytes, Instant::now()) {
                             emit_frame(frame, &disp_settings);
                         }
@@ -1181,6 +1192,10 @@ mod tests {
     enum ScriptEvent {
         /// Next read() returns these bytes.
         Bytes(Vec<u8>),
+        /// Next read() blocks for `delay_ms` (as POSIX read does when bytes
+        /// arrive mid-wait), THEN returns these bytes. Models a high-duty-
+        ///-cycle stream whose idle gap never surfaces as TimedOut (#9).
+        DelayedBytes { delay_ms: u64, bytes: Vec<u8> },
         /// Next read() fails with a non-timeout error (kills the reader thread).
         Fail,
     }
@@ -1216,6 +1231,17 @@ mod tests {
                         bytes.len(),
                         buf.len()
                     );
+                    buf[..bytes.len()].copy_from_slice(&bytes);
+                    Ok(bytes.len())
+                }
+                Some(ScriptEvent::DelayedBytes { delay_ms, bytes }) => {
+                    assert!(
+                        bytes.len() <= buf.len(),
+                        "script chunk {} bytes exceeds read buffer {}",
+                        bytes.len(),
+                        buf.len()
+                    );
+                    thread::sleep(Duration::from_millis(delay_ms));
                     buf[..bytes.len()].copy_from_slice(&bytes);
                     Ok(bytes.len())
                 }
@@ -1382,6 +1408,40 @@ mod tests {
         // Newlines are not special in Timeout mode: one idle period, one frame.
         let logs = run_script(vec![ScriptEvent::Bytes(b"OK\r\nOK\r\n".to_vec())], seg_timeout(), 1);
         assert_eq!(frame_bytes(&logs), vec![b"OK\r\nOK\r\n".to_vec()]);
+    }
+
+    #[test]
+    fn timeout_mode_cuts_frame_when_read_returns_after_idle_gap() {
+        // Issue #9: at 115200 baud / 2560 B / 250 ms period the inter-frame
+        // gap (~28 ms) is shorter than the 50 ms read timeout, so read()
+        // returns the NEXT chunk directly without a TimedOut in between.
+        // The idle check must run before feed() or frames merge invisibly
+        // until the 64 KiB hard cap. 30 ms gap > 10 ms seg timeout here.
+        let logs = run_script(
+            vec![
+                ScriptEvent::Bytes(b"AAAA".to_vec()),
+                ScriptEvent::DelayedBytes { delay_ms: 30, bytes: b"BBBB".to_vec() },
+            ],
+            seg_timeout(),
+            2,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"AAAA".to_vec(), b"BBBB".to_vec()]);
+    }
+
+    #[test]
+    fn timeout_mode_merges_when_gap_stays_below_timeout() {
+        // Companion pin: chunks arriving back-to-back (no observable idle
+        // gap) must still merge — the fix may not turn continuous flow into
+        // per-chunk cuts.
+        let logs = run_script(
+            vec![
+                ScriptEvent::Bytes(b"AAAA".to_vec()),
+                ScriptEvent::Bytes(b"BBBB".to_vec()),
+            ],
+            seg_timeout(),
+            1,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"AAAABBBB".to_vec()]);
     }
 
     #[test]
