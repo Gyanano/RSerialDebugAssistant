@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "RSerial Debug Assistant",
-    "subtitle": "Professional Tool"
+    "subtitle": "Professional Tool",
+    "connectionLost": "Connection lost: {error}"
   },
   "sidebar": {
     "expandSidebar": "Expand Sidebar",

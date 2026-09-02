@@ -51,9 +51,17 @@ async fn connect_to_port(
 
 #[tauri::command]
 async fn disconnect_port(state: State<'_, AppState>) -> Result<(), String> {
-    let mut manager = state.serial_manager.lock().unwrap();
-    manager.disconnect()
-        .map_err(|e| e.to_string())
+    // Fast state cleanup under the lock; the (bounded) reader join happens
+    // AFTER the lock is released so polling commands are never blocked
+    // behind a thread wait (RFC #3 Step 3).
+    let handle = {
+        let mut manager = state.serial_manager.lock().unwrap();
+        manager.disconnect().map_err(|e| e.to_string())?
+    };
+    if let Some(h) = handle {
+        SerialManager::join_reader_bounded(h);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -107,7 +115,7 @@ async fn send_data(
 
 #[tauri::command]
 async fn get_connection_status(state: State<'_, AppState>) -> Result<ConnectionStatus, String> {
-    let manager = state.serial_manager.lock().unwrap();
+    let mut manager = state.serial_manager.lock().unwrap();
     Ok(manager.get_status())
 }
 

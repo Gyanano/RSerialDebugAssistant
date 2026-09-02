@@ -435,7 +435,14 @@ function App() {
   const updateStatus = async () => {
     try {
       const status = await invoke<ConnectionStatus>('get_connection_status');
-      setConnectionStatus(status);
+      // Surface an unexpected loss (fatal read error, e.g. cable unplugged)
+      // exactly once per transition; manual disconnects carry no error.
+      setConnectionStatus((prev) => {
+        if (prev.is_connected && !status.is_connected && status.connection_error) {
+          toast.error(t('app.connectionLost').replace('{error}', status.connection_error));
+        }
+        return status;
+      });
     } catch (error) {
       console.error('Failed to get status:', error);
     }
