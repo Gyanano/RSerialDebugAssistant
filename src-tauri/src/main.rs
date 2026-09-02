@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use tauri::State;
 
 mod serial_manager;
+mod framing;
 mod types;
 mod updater;
 

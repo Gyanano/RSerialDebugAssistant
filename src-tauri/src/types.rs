@@ -95,7 +95,7 @@ pub struct LogEntry {
     pub timestamp_formatted: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Direction {
     Sent,
     Received,

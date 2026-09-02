@@ -1,3 +1,4 @@
+use crate::framing::{find_any_newline, find_delimiter};
 use crate::types::*;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
@@ -31,6 +32,8 @@ pub struct SerialManager {
     timezone_offset_minutes: Arc<Mutex<i32>>,
     // Display settings for pre-formatted log rendering
     display_settings: Arc<Mutex<DisplaySettings>>,
+    // Port opening seam (system opener in production, scripted fake in tests)
+    port_opener: Arc<dyn PortOpener>,
 }
 
 #[derive(Debug, Default)]
@@ -38,6 +41,47 @@ struct SerialStats {
     bytes_sent: u64,
     bytes_received: u64,
     connection_time: Option<chrono::DateTime<Utc>>,
+}
+
+/// Abstraction over how a serial port handle is opened (RFC #3 Step 1 seam).
+/// Production uses `SystemPortOpener`; tests inject scripted fakes that drive
+/// the real reader thread.
+pub(crate) trait PortOpener: Send + Sync {
+    fn open(&self, port_name: &str, config: &SerialConfig) -> Result<Box<dyn SerialPort>>;
+}
+
+struct SystemPortOpener;
+
+impl PortOpener for SystemPortOpener {
+    fn open(&self, port_name: &str, config: &SerialConfig) -> Result<Box<dyn SerialPort>> {
+        let builder = serialport::new(port_name, config.baud_rate)
+            .data_bits(match config.data_bits {
+                DataBits::Five => serialport::DataBits::Five,
+                DataBits::Six => serialport::DataBits::Six,
+                DataBits::Seven => serialport::DataBits::Seven,
+                DataBits::Eight => serialport::DataBits::Eight,
+            })
+            .parity(match config.parity {
+                Parity::None => serialport::Parity::None,
+                Parity::Odd => serialport::Parity::Odd,
+                Parity::Even => serialport::Parity::Even,
+                Parity::Mark => serialport::Parity::None,
+                Parity::Space => serialport::Parity::None,
+            })
+            .stop_bits(match config.stop_bits {
+                StopBits::One => serialport::StopBits::One,
+                StopBits::OnePointFive => serialport::StopBits::One,
+                StopBits::Two => serialport::StopBits::Two,
+            })
+            .flow_control(match config.flow_control {
+                FlowControl::None => serialport::FlowControl::None,
+                FlowControl::Software => serialport::FlowControl::Software,
+                FlowControl::Hardware => serialport::FlowControl::Hardware,
+            })
+            .timeout(Duration::from_millis(50)); // Short timeout for responsive reading
+
+        Ok(builder.open()?)
+    }
 }
 
 impl SerialManager {
@@ -66,7 +110,15 @@ impl SerialManager {
             log_directory: Arc::new(Mutex::new(default_log_dir)),
             timezone_offset_minutes: Arc::new(Mutex::new(0)),
             display_settings: Arc::new(Mutex::new(DisplaySettings::default())),
+            port_opener: Arc::new(SystemPortOpener),
         }
+    }
+
+    /// Test-only constructor: inject a scripted port opener.
+    #[cfg(test)]
+    fn with_port_opener(mut self, opener: Arc<dyn PortOpener>) -> Self {
+        self.port_opener = opener;
+        self
     }
 
     pub fn list_available_ports() -> Result<Vec<SerialPortInfo>> {
@@ -118,33 +170,7 @@ impl SerialManager {
             self.disconnect()?;
         }
 
-        let builder = serialport::new(port_name, config.baud_rate)
-            .data_bits(match config.data_bits {
-                DataBits::Five => serialport::DataBits::Five,
-                DataBits::Six => serialport::DataBits::Six,
-                DataBits::Seven => serialport::DataBits::Seven,
-                DataBits::Eight => serialport::DataBits::Eight,
-            })
-            .parity(match config.parity {
-                Parity::None => serialport::Parity::None,
-                Parity::Odd => serialport::Parity::Odd,
-                Parity::Even => serialport::Parity::Even,
-                Parity::Mark => serialport::Parity::None,
-                Parity::Space => serialport::Parity::None,
-            })
-            .stop_bits(match config.stop_bits {
-                StopBits::One => serialport::StopBits::One,
-                StopBits::OnePointFive => serialport::StopBits::One,
-                StopBits::Two => serialport::StopBits::Two,
-            })
-            .flow_control(match config.flow_control {
-                FlowControl::None => serialport::FlowControl::None,
-                FlowControl::Software => serialport::FlowControl::Software,
-                FlowControl::Hardware => serialport::FlowControl::Hardware,
-            })
-            .timeout(Duration::from_millis(50)); // Short timeout for responsive reading
-
-        let port = builder.open()?;
+        let port = self.port_opener.open(port_name, &config)?;
         info!("Successfully opened serial port: {}", port_name);
 
         // Reset and start reading thread
@@ -892,38 +918,6 @@ impl SerialManager {
     }
 }
 
-/// Find the position of a delimiter in the data buffer
-fn find_delimiter(data: &[u8], delimiter: &[u8]) -> Option<usize> {
-    if delimiter.is_empty() || data.len() < delimiter.len() {
-        return None;
-    }
-
-    data.windows(delimiter.len())
-        .position(|window| window == delimiter)
-}
-
-/// Find any newline sequence (\r, \n, or \r\n) in the data buffer.
-/// Returns (position, length) where length is 1 for \r or \n alone, and 2 for \r\n.
-/// This correctly handles \r\n as a single line ending (not two separate ones).
-fn find_any_newline(data: &[u8]) -> Option<(usize, usize)> {
-    for i in 0..data.len() {
-        match data[i] {
-            0x0D => { // CR
-                // Check if followed by LF (CRLF sequence)
-                if i + 1 < data.len() && data[i + 1] == 0x0A {
-                    return Some((i, 2)); // CRLF
-                }
-                return Some((i, 1)); // CR alone
-            }
-            0x0A => { // LF alone (not preceded by CR, as CRLF would have been caught above)
-                return Some((i, 1));
-            }
-            _ => continue,
-        }
-    }
-    None
-}
-
 /// Format current UTC time with timezone offset applied
 fn format_timestamp_with_offset(offset_minutes: i32) -> String {
     use chrono::FixedOffset;
@@ -1176,5 +1170,314 @@ mod tests {
         ]);
 
         assert_eq!(names(&filtered), vec!["/dev/cu.usbserial-140", "/dev/cu.HUAWEIFreeBudsPro3"]);
+    }
+
+    // ===== Scripted-port golden harness (RFC #3, Step 1) =====
+    // Drives the REAL reader thread through a fake port and asserts on the
+    // frames that land in the log buffer, pinning current framing behavior
+    // (quirks included) before Step 2 rewires the loop onto FrameSegmenter.
+
+    use std::io::{self, Read, Write};
+
+    enum ScriptEvent {
+        /// Next read() returns these bytes.
+        Bytes(Vec<u8>),
+        /// Next read() fails with a non-timeout error (kills the reader thread).
+        Fail,
+    }
+
+    /// Fake SerialPort driven by a script. An exhausted script idles forever
+    /// (returns TimedOut), mimicking a real quiet port. Writes are recorded.
+    #[derive(Clone)]
+    struct ScriptedPort {
+        name: String,
+        events: Arc<Mutex<VecDeque<ScriptEvent>>>,
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl ScriptedPort {
+        fn new(name: &str, script: Vec<ScriptEvent>) -> Self {
+            Self {
+                name: name.to_string(),
+                events: Arc::new(Mutex::new(script.into_iter().collect())),
+                written: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl Read for ScriptedPort {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let next = self.events.lock().unwrap().pop_front();
+            match next {
+                Some(ScriptEvent::Bytes(bytes)) => {
+                    // Scripts keep chunks smaller than the reader's 1024-byte buffer.
+                    assert!(
+                        bytes.len() <= buf.len(),
+                        "script chunk {} bytes exceeds read buffer {}",
+                        bytes.len(),
+                        buf.len()
+                    );
+                    buf[..bytes.len()].copy_from_slice(&bytes);
+                    Ok(bytes.len())
+                }
+                Some(ScriptEvent::Fail) => {
+                    Err(io::Error::new(io::ErrorKind::Other, "scripted failure"))
+                }
+                None => Err(io::Error::new(io::ErrorKind::TimedOut, "script idle")),
+            }
+        }
+    }
+
+    impl Write for ScriptedPort {
+        fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+            self.written.lock().unwrap().extend_from_slice(data);
+            Ok(data.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SerialPort for ScriptedPort {
+        fn name(&self) -> Option<String> {
+            Some(self.name.clone())
+        }
+        fn baud_rate(&self) -> serialport::Result<u32> {
+            Ok(115200)
+        }
+        fn data_bits(&self) -> serialport::Result<serialport::DataBits> {
+            Ok(serialport::DataBits::Eight)
+        }
+        fn flow_control(&self) -> serialport::Result<serialport::FlowControl> {
+            Ok(serialport::FlowControl::None)
+        }
+        fn parity(&self) -> serialport::Result<serialport::Parity> {
+            Ok(serialport::Parity::None)
+        }
+        fn stop_bits(&self) -> serialport::Result<serialport::StopBits> {
+            Ok(serialport::StopBits::One)
+        }
+        fn timeout(&self) -> Duration {
+            Duration::from_millis(50)
+        }
+        fn set_baud_rate(&mut self, _baud_rate: u32) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_data_bits(&mut self, _data_bits: serialport::DataBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_flow_control(
+            &mut self,
+            _flow_control: serialport::FlowControl,
+        ) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_parity(&mut self, _parity: serialport::Parity) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_stop_bits(&mut self, _stop_bits: serialport::StopBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_timeout(&mut self, _timeout: Duration) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_request_to_send(&mut self, _level: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_data_terminal_ready(&mut self, _level: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn read_clear_to_send(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_data_set_ready(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_ring_indicator(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_carrier_detect(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn bytes_to_read(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+        fn bytes_to_write(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+        fn clear(&self, _buffer_to_clear: serialport::ClearBuffer) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn try_clone(&self) -> serialport::Result<Box<dyn SerialPort>> {
+            Ok(Box::new(self.clone()))
+        }
+        fn set_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn clear_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct ScriptedOpener {
+        port: ScriptedPort,
+    }
+
+    impl PortOpener for ScriptedOpener {
+        fn open(&self, _port_name: &str, _config: &SerialConfig) -> Result<Box<dyn SerialPort>> {
+            Ok(Box::new(self.port.clone()))
+        }
+    }
+
+    fn seg_timeout() -> FrameSegmentationConfig {
+        FrameSegmentationConfig {
+            mode: FrameSegmentationMode::Timeout,
+            timeout_ms: 10,
+            delimiter: FrameDelimiter::AnyNewline,
+        }
+    }
+
+    fn seg_combined(delimiter: FrameDelimiter) -> FrameSegmentationConfig {
+        FrameSegmentationConfig {
+            mode: FrameSegmentationMode::Combined,
+            timeout_ms: 10,
+            delimiter,
+        }
+    }
+
+    /// Connect a manager to a scripted port, run the script through the real
+    /// reader thread, and return the log buffer once it holds `expect_frames`
+    /// entries (plus a settle window to catch any unexpected extra frames).
+    fn run_script(script: Vec<ScriptEvent>, seg: FrameSegmentationConfig, expect_frames: usize) -> Vec<LogEntry> {
+        let port = ScriptedPort::new("SCRIPT", script);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg);
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut logs = manager.get_logs();
+        while logs.len() < expect_frames && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+            logs = manager.get_logs();
+        }
+        // Settle window: any mis-framed extra frame shows up here.
+        thread::sleep(Duration::from_millis(150));
+        let logs = manager.get_logs();
+        manager.disconnect().unwrap();
+        logs
+    }
+
+    fn frame_bytes(logs: &[LogEntry]) -> Vec<Vec<u8>> {
+        logs.iter().map(|l| l.data.clone()).collect()
+    }
+
+    #[test]
+    fn golden_timeout_mode_single_frame() {
+        let logs = run_script(vec![ScriptEvent::Bytes(b"hello".to_vec())], seg_timeout(), 1);
+        assert_eq!(frame_bytes(&logs), vec![b"hello".to_vec()]);
+    }
+
+    #[test]
+    fn golden_timeout_mode_ignores_delimiters() {
+        // Newlines are not special in Timeout mode: one idle period, one frame.
+        let logs = run_script(vec![ScriptEvent::Bytes(b"OK\r\nOK\r\n".to_vec())], seg_timeout(), 1);
+        assert_eq!(frame_bytes(&logs), vec![b"OK\r\nOK\r\n".to_vec()]);
+    }
+
+    #[test]
+    fn golden_combined_any_newline_frames_on_arrival() {
+        let logs = run_script(
+            vec![ScriptEvent::Bytes(b"AT\r\nOK\r\n".to_vec())],
+            seg_combined(FrameDelimiter::AnyNewline),
+            2,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"AT\r\n".to_vec(), b"OK\r\n".to_vec()]);
+    }
+
+    #[test]
+    fn golden_combined_any_newline_crlf_split_across_reads_is_two_frames() {
+        // QUIRK pinned: "\r" ending a read matches immediately, so a CRLF pair
+        // split across read boundaries frames as "OK\r" and "\n" separately.
+        let logs = run_script(
+            vec![
+                ScriptEvent::Bytes(b"OK\r".to_vec()),
+                ScriptEvent::Bytes(b"\n".to_vec()),
+            ],
+            seg_combined(FrameDelimiter::AnyNewline),
+            2,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"OK\r".to_vec(), b"\n".to_vec()]);
+    }
+
+    #[test]
+    fn golden_combined_custom_delimiter_residue_flushes_on_timeout() {
+        let logs = run_script(
+            vec![ScriptEvent::Bytes(b"ab##cd##e".to_vec())],
+            seg_combined(FrameDelimiter::Custom(b"##".to_vec())),
+            3,
+        );
+        assert_eq!(
+            frame_bytes(&logs),
+            vec![b"ab##".to_vec(), b"cd##".to_vec(), b"e".to_vec()]
+        );
+    }
+
+    #[test]
+    fn golden_combined_empty_custom_delimiter_never_frames() {
+        let logs = run_script(
+            vec![ScriptEvent::Bytes(b"abc".to_vec())],
+            seg_combined(FrameDelimiter::Custom(vec![])),
+            1,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"abc".to_vec()]);
+    }
+
+    #[test]
+    fn golden_send_writes_port_and_interleaves_transcript() {
+        let port = ScriptedPort::new("SCRIPT", vec![ScriptEvent::Bytes(b"OK\r\n".to_vec())]);
+        let written = Arc::clone(&port.written);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg_combined(FrameDelimiter::AnyNewline));
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        // Wait for the RX frame first so ordering is deterministic.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while manager.get_logs().len() < 1 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        manager.send_data(b"AT\r\n".to_vec()).unwrap();
+        thread::sleep(Duration::from_millis(50));
+
+        let logs = manager.get_logs();
+        manager.disconnect().unwrap();
+
+        assert_eq!(*written.lock().unwrap(), b"AT\r\n".to_vec());
+        assert_eq!(
+            logs.iter().map(|l| l.direction).collect::<Vec<_>>(),
+            vec![Direction::Received, Direction::Sent]
+        );
+    }
+
+    #[test]
+    fn golden_reader_death_is_silent_today() {
+        // Pins the CURRENT (broken) behavior that RFC #3 Step 3 will fix:
+        // a fatal read error kills the thread silently — is_connected stays
+        // true and bytes pending in the accumulator are never framed.
+        let port = ScriptedPort::new(
+            "SCRIPT",
+            vec![ScriptEvent::Bytes(b"abc".to_vec()), ScriptEvent::Fail],
+        );
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg_timeout());
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        // Give the thread time to hit Fail and break.
+        thread::sleep(Duration::from_millis(200));
+        assert!(manager.get_status().is_connected); // the lie, pinned
+        assert!(manager.get_logs().is_empty()); // pending "abc" lost, pinned
+        manager.disconnect().unwrap();
     }
 }
