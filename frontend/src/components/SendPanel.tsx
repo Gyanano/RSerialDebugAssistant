@@ -28,7 +28,7 @@ export const SEND_PANEL_MIN_HEIGHTS = {
 };
 
 // Format hex input: filter non-hex chars, add spaces every 2 chars
-const formatHexInput = (input: string, previousValue: string): string => {
+const formatHexInput = (input: string): string => {
   // Remove all spaces first
   const withoutSpaces = input.replace(/\s/g, '');
 
@@ -145,7 +145,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
     if (format === 'Hex') {
       // Format and validate hex input
-      const formattedHex = formatHexInput(newValue, value);
+      const formattedHex = formatHexInput(newValue);
       onChange(formattedHex);
     } else {
       // Text mode: no restrictions

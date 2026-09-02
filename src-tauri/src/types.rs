@@ -84,7 +84,6 @@ pub enum TextEncoding {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
-    pub id: Option<i64>,
     pub timestamp: DateTime<Utc>,
     pub direction: Direction,
     pub data: Vec<u8>,

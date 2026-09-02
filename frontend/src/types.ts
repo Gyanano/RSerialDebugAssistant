@@ -36,7 +36,6 @@ export interface ChecksumConfig {
 }
 
 export interface LogEntry {
-  id?: number;
   timestamp: string;
   direction: Direction;
   data: number[];
