@@ -275,13 +275,44 @@ pub async fn download_update(
     Ok(file_path)
 }
 
-/// Launch the installer and exit the application
+/// Launch the installer and exit the application.
+///
+/// macOS: when running from a real `.app` bundle, do an in-place update —
+/// mount the dmg, hand a trampoline script the bundle swap, and exit. The
+/// trampoline waits for this process to die, swaps bundles atomically
+/// (stage → mv old aside → mv new in → relaunch), and falls back to opening
+/// the dmg (the old manual drag flow) if anything fails. No Finder replace
+/// prompt is ever shown.
 pub fn launch_installer_and_exit(installer_path: &str) -> Result<(), String> {
-    let mut command = if cfg!(target_os = "macos") {
-        let mut cmd = Command::new("open");
-        cmd.arg(installer_path);
-        cmd
-    } else if cfg!(target_os = "linux") && !installer_path.to_lowercase().ends_with(".appimage") {
+    launch_inner(installer_path)
+}
+
+#[cfg(target_os = "macos")]
+fn launch_inner(installer_path: &str) -> Result<(), String> {
+    match prepare_inplace_script(std::path::Path::new(installer_path)) {
+        Ok(script) => {
+            let spawn_result = Command::new("/bin/sh")
+                .arg(&script)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            if let Err(e) = spawn_result {
+                log::warn!("Failed to spawn update trampoline ({}); opening dmg instead", e);
+                let _ = Command::new("open").arg(installer_path).spawn();
+            }
+        }
+        Err(e) => {
+            log::warn!("In-place update unavailable ({}); opening dmg instead", e);
+            let _ = Command::new("open").arg(installer_path).spawn();
+        }
+    }
+    std::process::exit(0);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn launch_inner(installer_path: &str) -> Result<(), String> {
+    let mut command = if cfg!(target_os = "linux") && !installer_path.to_lowercase().ends_with(".appimage") {
         let mut cmd = Command::new("xdg-open");
         cmd.arg(installer_path);
         cmd
@@ -294,6 +325,153 @@ pub fn launch_installer_and_exit(installer_path: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to launch installer: {}", e))?;
 
     std::process::exit(0);
+}
+
+// ---------- macOS in-place update ----------
+
+/// Extract the enclosing `.app` bundle path from an executable path, e.g.
+/// `/Applications/Foo.app/Contents/MacOS/foo` → `/Applications/Foo.app`.
+/// Returns None when the binary is not inside a bundle (dev runs, tests).
+fn bundle_path_from_exe(exe: &std::path::Path) -> Option<PathBuf> {
+    exe.ancestors()
+        .find(|p| p.extension().is_some_and(|e| e == "app"))
+        .map(|p| p.to_path_buf())
+}
+
+/// Parse the mount point from `hdiutil attach` text output: the field
+/// starting with "/Volumes/" on the last line that has one. Mount points
+/// may contain spaces, so everything from that marker to EOL is kept.
+fn parse_hdiutil_mount_point(output: &str) -> Option<String> {
+    output.lines().rev().find_map(|line| {
+        line.find("/Volumes/")
+            .map(|i| line[i..].trim().to_string())
+    })
+}
+
+/// Single-quote a value for POSIX shell (`a'b` → `'a'\''b'`).
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Render the trampoline shell script. Kept as a pure function so the exact
+/// swap sequence is unit-testable without touching hdiutil/ditto.
+fn render_trampoline_script(
+    pid: u32,
+    mount: &str,
+    app_in_dmg: &std::path::Path,
+    target: &std::path::Path,
+    dmg: &std::path::Path,
+) -> String {
+    format!(
+        r#"#!/bin/sh
+# RSerial Debug Assistant in-place update trampoline (auto-generated).
+# Waits for the running app to exit, swaps the .app bundle, relaunches.
+PID={pid}
+MOUNT={mount}
+APP_IN_DMG={app}
+TARGET={target}
+DMG={dmg}
+
+# 1. Wait for the app to exit (bounded at ~30 s; replacing a running .app
+#    is harmless on macOS anyway — the process keeps the old inode).
+i=0
+while kill -0 "$PID" 2>/dev/null && [ "$i" -lt 150 ]; do
+    i=$((i + 1))
+    sleep 0.2
+done
+
+PARENT=$(dirname "$TARGET")
+NEW_TMP="$PARENT/.rsda-update-new.app"
+OLD_TMP="$PARENT/.rsda-update-old.app"
+
+fallback() {{
+    rm -rf "$NEW_TMP"
+    hdiutil detach "$MOUNT" -quiet -force 2>/dev/null
+    open "$DMG"
+    exit 1
+}}
+
+# 2. Stage the new bundle next to the target (same volume => mv is atomic).
+rm -rf "$NEW_TMP"
+ditto "$APP_IN_DMG" "$NEW_TMP" || fallback
+
+# 3. Swap: old aside, new in; roll back if the second move fails.
+rm -rf "$OLD_TMP"
+mv "$TARGET" "$OLD_TMP" || fallback
+if ! mv "$NEW_TMP" "$TARGET"; then
+    mv "$OLD_TMP" "$TARGET"
+    fallback
+fi
+
+# 4. Clean up and relaunch the updated app.
+rm -rf "$OLD_TMP"
+hdiutil detach "$MOUNT" -quiet -force 2>/dev/null
+rm -f "$DMG"
+open "$TARGET"
+rm -f "$0"
+"#,
+        pid = pid,
+        mount = shell_quote(mount),
+        app = shell_quote(&app_in_dmg.to_string_lossy()),
+        target = shell_quote(&target.to_string_lossy()),
+        dmg = shell_quote(&dmg.to_string_lossy()),
+    )
+}
+
+/// Mount the dmg read-only and return its mount point.
+#[cfg(target_os = "macos")]
+fn attach_dmg(dmg_path: &std::path::Path) -> Result<String, String> {
+    let out = Command::new("hdiutil")
+        .args(["attach", "-nobrowse", "-readonly"])
+        .arg(dmg_path)
+        .output()
+        .map_err(|e| format!("Failed to run hdiutil: {}", e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "hdiutil attach failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    parse_hdiutil_mount_point(&String::from_utf8_lossy(&out.stdout))
+        .ok_or_else(|| "Could not parse hdiutil mount point".to_string())
+}
+
+/// First `.app` bundle inside a directory (the mounted dmg root).
+#[cfg(target_os = "macos")]
+fn find_app_in_dir(dir: &std::path::Path) -> Result<PathBuf, String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("Cannot read dmg mount: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "app") {
+            return Ok(path);
+        }
+    }
+    Err("No .app found inside the dmg".to_string())
+}
+
+/// Build the trampoline script for an in-place update from `dmg_path` onto
+/// the currently running bundle. Err => caller falls back to manual flow.
+#[cfg(target_os = "macos")]
+fn prepare_inplace_script(dmg_path: &std::path::Path) -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Cannot locate exe: {}", e))?;
+    let bundle = bundle_path_from_exe(&exe)
+        .ok_or_else(|| "App is not running from an .app bundle".to_string())?;
+
+    let mount = attach_dmg(dmg_path)?;
+    let app_in_dmg = match find_app_in_dir(std::path::Path::new(&mount)) {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = Command::new("hdiutil")
+                .args(["detach", &mount, "-quiet", "-force"])
+                .status();
+            return Err(e);
+        }
+    };
+
+    let script = render_trampoline_script(std::process::id(), &mount, &app_in_dmg, &bundle, dmg_path);
+    let script_path = std::env::temp_dir().join(format!("rsda-update-{}.sh", std::process::id()));
+    std::fs::write(&script_path, script).map_err(|e| format!("Cannot write trampoline: {}", e))?;
+    Ok(script_path)
 }
 
 /// Open a URL in the system browser (release notes, project page, …).
@@ -349,6 +527,66 @@ mod tests {
         assert!(open_url("file:///etc/passwd").is_err());
         assert!(open_url("javascript:alert(1)").is_err());
         assert!(open_url("").is_err());
+    }
+
+    #[test]
+    fn bundle_path_extracted_from_nested_exe() {
+        let exe = std::path::Path::new("/Applications/RSerial Debug Assistant.app/Contents/MacOS/serial-debug-assistant");
+        assert_eq!(
+            bundle_path_from_exe(exe),
+            Some(PathBuf::from("/Applications/RSerial Debug Assistant.app"))
+        );
+    }
+
+    #[test]
+    fn bundle_path_none_outside_bundle() {
+        let exe = std::path::Path::new("/Users/x/project/target/debug/serial-debug-assistant");
+        assert_eq!(bundle_path_from_exe(exe), None);
+    }
+
+    #[test]
+    fn hdiutil_mount_point_parsed_with_spaces() {
+        let out = "/dev/disk6              GUID_partition_scheme\n\
+                   /dev/disk6s1            EFI\n\
+                   /dev/disk6s2            Apple_HFS   /Volumes/RSerial Debug Assistant 1.4.1\n";
+        assert_eq!(
+            parse_hdiutil_mount_point(out),
+            Some("/Volumes/RSerial Debug Assistant 1.4.1".to_string())
+        );
+    }
+
+    #[test]
+    fn hdiutil_mount_point_none_on_garbage() {
+        assert_eq!(parse_hdiutil_mount_point("no mounts here"), None);
+        assert_eq!(parse_hdiutil_mount_point(""), None);
+    }
+
+    #[test]
+    fn shell_quote_handles_spaces_and_quotes() {
+        assert_eq!(shell_quote("/a b/c"), "'/a b/c'");
+        assert_eq!(shell_quote("a'b"), "'a'\\''b'");
+    }
+
+    #[test]
+    fn trampoline_script_swaps_and_relaunches() {
+        let script = render_trampoline_script(
+            4242,
+            "/Volumes/RSDA 1.4.1",
+            std::path::Path::new("/Volumes/RSDA 1.4.1/RSerial Debug Assistant.app"),
+            std::path::Path::new("/Applications/RSerial Debug Assistant.app"),
+            std::path::Path::new("/tmp/rsda.dmg"),
+        );
+        // Waits for our pid, stages via ditto, swaps, rolls back on failure,
+        // detaches, relaunches the target — and quotes every path.
+        assert!(script.contains("PID=4242"));
+        assert!(script.contains("kill -0 \"$PID\""));
+        assert!(script.contains("MOUNT='/Volumes/RSDA 1.4.1'"));
+        assert!(script.contains("ditto \"$APP_IN_DMG\" \"$NEW_TMP\""));
+        assert!(script.contains("mv \"$TARGET\" \"$OLD_TMP\""));
+        assert!(script.contains("mv \"$OLD_TMP\" \"$TARGET\""));
+        assert!(script.contains("hdiutil detach \"$MOUNT\""));
+        assert!(script.contains("open \"$TARGET\""));
+        assert!(script.contains("open \"$DMG\""));
     }
 
     fn asset(name: &str) -> GitHubAsset {
